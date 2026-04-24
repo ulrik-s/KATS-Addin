@@ -4,16 +4,11 @@ import { KatsContext } from '../../src/core/context.js';
 import { ProcessorError } from '../../src/core/errors.js';
 import { type Processor, type TagName, tagName } from '../../src/core/processor.js';
 import { type Discovery, MapProcessorRegistry, runPipeline } from '../../src/core/pipeline.js';
-
-// Stub Range type for tests — processors are generic over TRange so this works.
-interface FakeRange {
-  readonly id: string;
-}
+import { FakeTextKatsRange } from '../../src/io/fake-kats-range.js';
 
 interface SpyEvent {
   readonly tag: string;
   readonly phase: 'read' | 'transform' | 'render';
-  readonly rangeId?: string;
 }
 
 const counterSchema = z.object({ reads: z.number(), transforms: z.number() });
@@ -22,11 +17,11 @@ function makeSpyProcessor(
   tag: TagName,
   events: SpyEvent[],
   opts: { throwIn?: 'read' | 'transform' | 'render' } = {},
-): Processor<FakeRange> {
+): Processor {
   return {
     tag,
-    async read(range, ctx) {
-      events.push({ tag: tag, phase: 'read', rangeId: range.id });
+    async read(_range, ctx) {
+      events.push({ tag: tag, phase: 'read' });
       if (opts.throwIn === 'read') throw new Error('boom-read');
       const prev = ctx.getSlot(`spy:${tag as unknown as string}`, counterSchema) ?? {
         reads: 0,
@@ -47,8 +42,8 @@ function makeSpyProcessor(
         transforms: prev.transforms + 1,
       });
     },
-    async render(range, _ctx) {
-      events.push({ tag: tag, phase: 'render', rangeId: range.id });
+    async render(_range, _ctx) {
+      events.push({ tag: tag, phase: 'render' });
       if (opts.throwIn === 'render') throw new Error('boom-render');
       await Promise.resolve();
     },
@@ -62,22 +57,21 @@ describe('runPipeline — phase ordering', () => {
     const tagB = tagName('KATS_ARVODE');
     const tagC = tagName('KATS_SIGNATUR');
 
-    const registry = new MapProcessorRegistry<FakeRange>();
+    const registry = new MapProcessorRegistry();
     registry.register(makeSpyProcessor(tagA, events));
     registry.register(makeSpyProcessor(tagB, events));
     registry.register(makeSpyProcessor(tagC, events));
 
-    const discoveries: Discovery<FakeRange>[] = [
-      { tag: tagA, range: { id: 'rA' } },
-      { tag: tagB, range: { id: 'rB' } },
-      { tag: tagC, range: { id: 'rC' } },
+    const discoveries: Discovery[] = [
+      { tag: tagA, range: new FakeTextKatsRange() },
+      { tag: tagB, range: new FakeTextKatsRange() },
+      { tag: tagC, range: new FakeTextKatsRange() },
     ];
 
     const ctx = new KatsContext();
     await runPipeline(discoveries, registry, ctx);
 
     const phases = events.map((e) => e.phase);
-    // All reads first, then all transforms, then all renders.
     expect(phases).toEqual([
       'read',
       'read',
@@ -89,7 +83,6 @@ describe('runPipeline — phase ordering', () => {
       'render',
       'render',
     ]);
-    // Discovery order preserved within each phase.
     expect(events.slice(0, 3).map((e) => e.tag)).toEqual([
       'KATS_UTLAGG',
       'KATS_ARVODE',
@@ -107,30 +100,18 @@ describe('runPipeline — phase ordering', () => {
     ]);
   });
 
-  it('passes the correct range to each processor in read and render phases', async () => {
-    const events: SpyEvent[] = [];
-    const t = tagName('KATS_UTLAGG');
-    const registry = new MapProcessorRegistry<FakeRange>();
-    registry.register(makeSpyProcessor(t, events));
-
-    await runPipeline([{ tag: t, range: { id: 'the-range' } }], registry, new KatsContext());
-
-    const rangeIds = events.filter((e) => e.rangeId !== undefined).map((e) => e.rangeId);
-    expect(rangeIds).toEqual(['the-range', 'the-range']); // read + render
-  });
-
   it('registers every discovery tag in the context', async () => {
     const tagA = tagName('KATS_UTLAGG');
     const tagB = tagName('KATS_ARVODE');
-    const registry = new MapProcessorRegistry<FakeRange>();
+    const registry = new MapProcessorRegistry();
     registry.register(makeSpyProcessor(tagA, []));
     registry.register(makeSpyProcessor(tagB, []));
 
     const ctx = new KatsContext();
     await runPipeline(
       [
-        { tag: tagA, range: { id: 'rA' } },
-        { tag: tagB, range: { id: 'rB' } },
+        { tag: tagA, range: new FakeTextKatsRange() },
+        { tag: tagB, range: new FakeTextKatsRange() },
       ],
       registry,
       ctx,
@@ -144,41 +125,41 @@ describe('runPipeline — phase ordering', () => {
 describe('runPipeline — error handling', () => {
   it('wraps a read-phase error in ProcessorError with phase="read"', async () => {
     const t = tagName('KATS_UTLAGG');
-    const registry = new MapProcessorRegistry<FakeRange>();
+    const registry = new MapProcessorRegistry();
     registry.register(makeSpyProcessor(t, [], { throwIn: 'read' }));
 
     await expect(
-      runPipeline([{ tag: t, range: { id: 'r' } }], registry, new KatsContext()),
+      runPipeline([{ tag: t, range: new FakeTextKatsRange() }], registry, new KatsContext()),
     ).rejects.toMatchObject({ name: 'ProcessorError', phase: 'read', tag: t });
   });
 
   it('wraps a transform-phase error with phase="transform"', async () => {
     const t = tagName('KATS_ARVODE');
-    const registry = new MapProcessorRegistry<FakeRange>();
+    const registry = new MapProcessorRegistry();
     registry.register(makeSpyProcessor(t, [], { throwIn: 'transform' }));
 
     await expect(
-      runPipeline([{ tag: t, range: { id: 'r' } }], registry, new KatsContext()),
+      runPipeline([{ tag: t, range: new FakeTextKatsRange() }], registry, new KatsContext()),
     ).rejects.toMatchObject({ name: 'ProcessorError', phase: 'transform' });
   });
 
   it('wraps a render-phase error with phase="render"', async () => {
     const t = tagName('KATS_SIGNATUR');
-    const registry = new MapProcessorRegistry<FakeRange>();
+    const registry = new MapProcessorRegistry();
     registry.register(makeSpyProcessor(t, [], { throwIn: 'render' }));
 
     await expect(
-      runPipeline([{ tag: t, range: { id: 'r' } }], registry, new KatsContext()),
+      runPipeline([{ tag: t, range: new FakeTextKatsRange() }], registry, new KatsContext()),
     ).rejects.toMatchObject({ name: 'ProcessorError', phase: 'render' });
   });
 
   it('preserves the original error via `cause`', async () => {
     const t = tagName('KATS_UTLAGG');
-    const registry = new MapProcessorRegistry<FakeRange>();
+    const registry = new MapProcessorRegistry();
     registry.register(makeSpyProcessor(t, [], { throwIn: 'transform' }));
 
     try {
-      await runPipeline([{ tag: t, range: { id: 'r' } }], registry, new KatsContext());
+      await runPipeline([{ tag: t, range: new FakeTextKatsRange() }], registry, new KatsContext());
       expect.fail('should have thrown');
     } catch (e) {
       expect(e).toBeInstanceOf(ProcessorError);
@@ -188,23 +169,49 @@ describe('runPipeline — error handling', () => {
     }
   });
 
+  it('rethrows an already-wrapped ProcessorError without re-wrapping', async () => {
+    const t = tagName('KATS_UTLAGG');
+    const registry = new MapProcessorRegistry();
+    registry.register({
+      tag: t,
+      read(_range, _ctx) {
+        throw new ProcessorError('inner', t, 'read');
+      },
+      transform() {
+        /* no-op */
+      },
+      render(_range, _ctx) {
+        return Promise.resolve();
+      },
+    });
+    try {
+      await runPipeline([{ tag: t, range: new FakeTextKatsRange() }], registry, new KatsContext());
+      expect.fail('should have thrown');
+    } catch (e) {
+      expect(e).toBeInstanceOf(ProcessorError);
+      const err = e as ProcessorError;
+      expect(err.message).toContain('inner');
+      expect(err.cause).toBeUndefined();
+    }
+  });
+
   it('throws ProcessorError when discovery tag has no registered processor', async () => {
-    const registry = new MapProcessorRegistry<FakeRange>();
+    const registry = new MapProcessorRegistry();
     const t = tagName('KATS_MISSING');
     await expect(
-      runPipeline([{ tag: t, range: { id: 'r' } }], registry, new KatsContext()),
+      runPipeline([{ tag: t, range: new FakeTextKatsRange() }], registry, new KatsContext()),
     ).rejects.toBeInstanceOf(ProcessorError);
   });
 });
 
 describe('MapProcessorRegistry', () => {
   it('returns undefined for unknown tag', () => {
-    const registry = new MapProcessorRegistry<FakeRange>();
+    const registry = new MapProcessorRegistry();
     expect(registry.get(tagName('KATS_UTLAGG'))).toBeUndefined();
   });
 
   it('retrieves a registered processor', () => {
-    const registry = new MapProcessorRegistry<FakeRange>();
+    const registry = new MapProcessorRegistry();
     const t = tagName('KATS_UTLAGG');
     const p = makeSpyProcessor(t, []);
     registry.register(p);
@@ -212,7 +219,7 @@ describe('MapProcessorRegistry', () => {
   });
 
   it('rejects double-registration for the same tag', () => {
-    const registry = new MapProcessorRegistry<FakeRange>();
+    const registry = new MapProcessorRegistry();
     const t = tagName('KATS_UTLAGG');
     registry.register(makeSpyProcessor(t, []));
     expect(() => {

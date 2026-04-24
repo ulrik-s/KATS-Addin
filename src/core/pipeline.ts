@@ -1,45 +1,46 @@
 import { type KatsContext } from './context.js';
 import { ProcessorError } from './errors.js';
 import { type Processor, type TagName } from './processor.js';
+import { type KatsRange } from '../io/kats-range.js';
 
-/** A tag discovered in the document paired with the Range that holds its content. */
-export interface Discovery<TRange> {
+/** A tag discovered in the document paired with the range covering its content. */
+export interface Discovery {
   readonly tag: TagName;
-  readonly range: TRange;
+  readonly range: KatsRange;
 }
 
 /** Source of truth for which processor handles which tag. */
-export interface ProcessorRegistry<TRange> {
-  get(tag: TagName): Processor<TRange> | undefined;
+export interface ProcessorRegistry {
+  get(tag: TagName): Processor | undefined;
 }
 
 /** Simple Map-backed registry implementation. */
-export class MapProcessorRegistry<TRange> implements ProcessorRegistry<TRange> {
-  private readonly byTag = new Map<TagName, Processor<TRange>>();
+export class MapProcessorRegistry implements ProcessorRegistry {
+  private readonly byTag = new Map<TagName, Processor>();
 
-  register(processor: Processor<TRange>): void {
+  register(processor: Processor): void {
     if (this.byTag.has(processor.tag)) {
       throw new Error(`Processor already registered for tag: ${processor.tag as string}`);
     }
     this.byTag.set(processor.tag, processor);
   }
 
-  get(tag: TagName): Processor<TRange> | undefined {
+  get(tag: TagName): Processor | undefined {
     return this.byTag.get(tag);
   }
 }
 
-interface WorkItem<TRange> {
-  readonly processor: Processor<TRange>;
-  readonly range: TRange;
+interface WorkItem {
+  readonly processor: Processor;
+  readonly range: KatsRange;
 }
 
-function resolveWork<TRange>(
-  discoveries: readonly Discovery<TRange>[],
-  registry: ProcessorRegistry<TRange>,
+function resolveWork(
+  discoveries: readonly Discovery[],
+  registry: ProcessorRegistry,
   ctx: KatsContext,
-): WorkItem<TRange>[] {
-  const work: WorkItem<TRange>[] = [];
+): WorkItem[] {
+  const work: WorkItem[] = [];
   for (const d of discoveries) {
     const processor = registry.get(d.tag);
     if (!processor) {
@@ -65,9 +66,9 @@ function resolveWork<TRange>(
  * Any exception is wrapped in `ProcessorError` tagging which processor and
  * phase failed. The original is preserved via `cause`.
  */
-export async function runPipeline<TRange>(
-  discoveries: readonly Discovery<TRange>[],
-  registry: ProcessorRegistry<TRange>,
+export async function runPipeline(
+  discoveries: readonly Discovery[],
+  registry: ProcessorRegistry,
   ctx: KatsContext,
 ): Promise<void> {
   const work = resolveWork(discoveries, registry, ctx);
@@ -77,6 +78,7 @@ export async function runPipeline<TRange>(
     try {
       await processor.read(range, ctx);
     } catch (cause) {
+      if (cause instanceof ProcessorError) throw cause;
       throw new ProcessorError(messageOf(cause), processor.tag, 'read', { cause });
     }
   }
@@ -86,6 +88,7 @@ export async function runPipeline<TRange>(
     try {
       processor.transform(ctx);
     } catch (cause) {
+      if (cause instanceof ProcessorError) throw cause;
       throw new ProcessorError(messageOf(cause), processor.tag, 'transform', { cause });
     }
   }
@@ -95,6 +98,7 @@ export async function runPipeline<TRange>(
     try {
       await processor.render(range, ctx);
     } catch (cause) {
+      if (cause instanceof ProcessorError) throw cause;
       throw new ProcessorError(messageOf(cause), processor.tag, 'render', { cause });
     }
   }

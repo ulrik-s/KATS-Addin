@@ -1,5 +1,7 @@
 import { z } from 'zod';
 import { type KatsContext } from './context.js';
+import { ProcessorError } from './errors.js';
+import { type KatsRange, type TableKatsRange, type TextKatsRange } from '../io/kats-range.js';
 
 /** The three pipeline phases, in execution order. */
 export const PHASES = ['read', 'transform', 'render'] as const;
@@ -20,16 +22,22 @@ export function tagName(raw: string): TagName {
   return tagNameSchema.parse(raw);
 }
 
-/** Contract every processor implements. `TRange` is abstract so tests can pass fakes. */
-export interface Processor<TRange> {
-  /** The tag this processor handles, e.g. tagName("KATS_UTLAGGSSPECIFIKATION"). */
+/**
+ * Contract every processor implements. Processors accept the union
+ * `KatsRange` at the boundary and use `requireTextRange` /
+ * `requireTableRange` to narrow inside `read` and `render`. This keeps
+ * the pipeline uniform while letting each processor declare its
+ * expected shape locally.
+ */
+export interface Processor {
+  /** The tag this processor handles, e.g. `tagName("KATS_UTLAGGSSPECIFIKATION")`. */
   readonly tag: TagName;
 
   /**
    * Phase 1. Read document content into ctx. Runs before any processor's
    * transform or render. Should mutate ctx only via this processor's slot.
    */
-  read(range: TRange, ctx: KatsContext): Promise<void>;
+  read(range: KatsRange, ctx: KatsContext): Promise<void>;
 
   /**
    * Phase 2. Pure business logic. No Office JS calls. Reads own + other
@@ -41,5 +49,24 @@ export interface Processor<TRange> {
    * Phase 3. Write transformed state back to document. Runs after every
    * processor's transform has completed.
    */
-  render(range: TRange, ctx: KatsContext): Promise<void>;
+  render(range: KatsRange, ctx: KatsContext): Promise<void>;
+}
+
+/**
+ * Narrow a `KatsRange` to `TextKatsRange`. Throws `ProcessorError` with
+ * the calling processor's tag + phase if the shape is wrong.
+ */
+export function requireTextRange(range: KatsRange, tag: TagName, phase: Phase): TextKatsRange {
+  if (range.kind !== 'text') {
+    throw new ProcessorError(`expected text range, got ${range.kind} range`, tag, phase);
+  }
+  return range;
+}
+
+/** Narrow a `KatsRange` to `TableKatsRange`. Throws on mismatch. */
+export function requireTableRange(range: KatsRange, tag: TagName, phase: Phase): TableKatsRange {
+  if (range.kind !== 'table') {
+    throw new ProcessorError(`expected table range, got ${range.kind} range`, tag, phase);
+  }
+  return range;
 }
