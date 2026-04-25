@@ -1,0 +1,101 @@
+/* Minimal task-pane styling — system fonts + a few semantic colors.
+   Fluent UI can be layered on later without changing the structure. */
+
+:root {
+  --kats-bg: #ffffff;
+  --kats-fg: #1a1a1a;
+  --kats-muted: #6c6c6c;
+  --kats-border: #d8d8d8;
+  --kats-accent: #0078d4;
+  --kats-accent-hover: #106ebe;
+  --kats-success: #107c10;
+  --kats-error: #a4262c;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--kats-bg);
+  color: var(--kats-fg);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+#root {
+  padding: 16px;
+}
+
+h1 {
+  margin: 0 0 4px;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.kats-version {
+  color: var(--kats-muted);
+  font-size: 12px;
+  margin-bottom: 16px;
+}
+
+.kats-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.kats-button {
+  appearance: none;
+  border: 1px solid var(--kats-accent);
+  background: var(--kats-accent);
+  color: #fff;
+  padding: 8px 12px;
+  font-size: 14px;
+  font-weight: 500;
+  border-radius: 2px;
+  cursor: pointer;
+}
+
+.kats-button:hover:not(:disabled) {
+  background: var(--kats-accent-hover);
+  border-color: var(--kats-accent-hover);
+}
+
+.kats-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.kats-button-secondary {
+  background: #fff;
+  color: var(--kats-accent);
+}
+
+.kats-button-secondary:hover:not(:disabled) {
+  background: #f3f9fd;
+  color: var(--kats-accent-hover);
+}
+
+.kats-status {
+  padding: 8px 12px;
+  border-radius: 2px;
+  border-left: 3px solid var(--kats-border);
+  background: #f7f7f7;
+  font-size: 13px;
+  white-space: pre-wrap;
+}
+
+.kats-status-success {
+  border-left-color: var(--kats-success);
+  background: #f1f8f1;
+}
+
+.kats-status-error {
+  border-left-color: var(--kats-error);
+  background: #fdf3f4;
+  color: var(--kats-error);
+}

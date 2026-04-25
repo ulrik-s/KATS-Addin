@@ -1,0 +1,134 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!--
+  KATS Word Add-in manifest template.
+
+  Build-time substitutions (handled by `scripts/build-manifest.mjs`):
+    {{HOST_URL}}    https://<gh-user>.github.io/KATS-Addin/   (no trailing slash)
+    {{VERSION}}     from package.json
+    {{GUID}}        from KATS_ADDIN_GUID env var, falling back to manifest/guid.txt
+-->
+<OfficeApp xmlns="http://schemas.microsoft.com/office/appforoffice/1.1"
+           xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+           xmlns:bt="http://schemas.microsoft.com/office/officeappbasictypes/1.0"
+           xmlns:ov="http://schemas.microsoft.com/office/taskpaneappversionoverrides"
+           xsi:type="TaskPaneApp">
+
+  <Id>{{GUID}}</Id>
+  <Version>{{VERSION}}</Version>
+  <ProviderName>MGA Advokater</ProviderName>
+  <DefaultLocale>sv-SE</DefaultLocale>
+  <DisplayName DefaultValue="KATS" />
+  <Description DefaultValue="Transformerar KATS-taggade Word-dokument." />
+  <IconUrl DefaultValue="{{HOST_URL}}/assets/icon-64.png" />
+  <HighResolutionIconUrl DefaultValue="{{HOST_URL}}/assets/icon-128.png" />
+  <SupportUrl DefaultValue="https://github.com/ulrik-s/KATS-Addin" />
+
+  <AppDomains>
+    <AppDomain>{{HOST_URL}}</AppDomain>
+  </AppDomains>
+
+  <Hosts>
+    <Host Name="Document" />
+  </Hosts>
+
+  <Requirements>
+    <Sets DefaultMinVersion="1.4">
+      <Set Name="WordApi" MinVersion="1.4" />
+    </Sets>
+  </Requirements>
+
+  <DefaultSettings>
+    <SourceLocation DefaultValue="{{HOST_URL}}/taskpane.html" />
+  </DefaultSettings>
+
+  <Permissions>ReadWriteDocument</Permissions>
+
+  <VersionOverrides xmlns="http://schemas.microsoft.com/office/taskpaneappversionoverrides"
+                    xsi:type="VersionOverridesV1_0">
+    <Hosts>
+      <Host xsi:type="Document">
+        <DesktopFormFactor>
+          <GetStarted>
+            <Title resid="Kats.GetStarted.Title" />
+            <Description resid="Kats.GetStarted.Description" />
+            <LearnMoreUrl resid="Kats.GetStarted.LearnMoreUrl" />
+          </GetStarted>
+          <FunctionFile resid="Kats.Commands.Url" />
+          <ExtensionPoint xsi:type="PrimaryCommandSurface">
+            <CustomTab id="Kats.Tab">
+              <Group id="Kats.Group">
+                <Label resid="Kats.Group.Label" />
+                <Icon>
+                  <bt:Image size="16" resid="Kats.Icon16" />
+                  <bt:Image size="32" resid="Kats.Icon32" />
+                  <bt:Image size="80" resid="Kats.Icon80" />
+                </Icon>
+                <Control xsi:type="Button" id="Kats.RunButton">
+                  <Label resid="Kats.RunButton.Label" />
+                  <Supertip>
+                    <Title resid="Kats.RunButton.Title" />
+                    <Description resid="Kats.RunButton.Tooltip" />
+                  </Supertip>
+                  <Icon>
+                    <bt:Image size="16" resid="Kats.Icon16" />
+                    <bt:Image size="32" resid="Kats.Icon32" />
+                    <bt:Image size="80" resid="Kats.Icon80" />
+                  </Icon>
+                  <Action xsi:type="ExecuteFunction">
+                    <FunctionName>katsRun</FunctionName>
+                  </Action>
+                </Control>
+                <Control xsi:type="Button" id="Kats.OpenPaneButton">
+                  <Label resid="Kats.OpenPaneButton.Label" />
+                  <Supertip>
+                    <Title resid="Kats.OpenPaneButton.Title" />
+                    <Description resid="Kats.OpenPaneButton.Tooltip" />
+                  </Supertip>
+                  <Icon>
+                    <bt:Image size="16" resid="Kats.Icon16" />
+                    <bt:Image size="32" resid="Kats.Icon32" />
+                    <bt:Image size="80" resid="Kats.Icon80" />
+                  </Icon>
+                  <Action xsi:type="ShowTaskpane">
+                    <SourceLocation resid="Kats.Taskpane.Url" />
+                  </Action>
+                </Control>
+              </Group>
+              <Label resid="Kats.Tab.Label" />
+            </CustomTab>
+          </ExtensionPoint>
+        </DesktopFormFactor>
+      </Host>
+    </Hosts>
+
+    <Resources>
+      <bt:Images>
+        <bt:Image id="Kats.Icon16" DefaultValue="{{HOST_URL}}/assets/icon-16.png" />
+        <bt:Image id="Kats.Icon32" DefaultValue="{{HOST_URL}}/assets/icon-32.png" />
+        <bt:Image id="Kats.Icon80" DefaultValue="{{HOST_URL}}/assets/icon-80.png" />
+      </bt:Images>
+      <bt:Urls>
+        <bt:Url id="Kats.Commands.Url" DefaultValue="{{HOST_URL}}/commands.html" />
+        <bt:Url id="Kats.Taskpane.Url" DefaultValue="{{HOST_URL}}/taskpane.html" />
+        <bt:Url id="Kats.GetStarted.LearnMoreUrl" DefaultValue="https://github.com/ulrik-s/KATS-Addin" />
+      </bt:Urls>
+      <bt:ShortStrings>
+        <bt:String id="Kats.Tab.Label" DefaultValue="MGA" />
+        <bt:String id="Kats.Group.Label" DefaultValue="KATS" />
+        <bt:String id="Kats.RunButton.Label" DefaultValue="Processa KATS" />
+        <bt:String id="Kats.RunButton.Title" DefaultValue="Processa KATS" />
+        <bt:String id="Kats.OpenPaneButton.Label" DefaultValue="Öppna KATS" />
+        <bt:String id="Kats.OpenPaneButton.Title" DefaultValue="Öppna KATS-panelen" />
+        <bt:String id="Kats.GetStarted.Title" DefaultValue="KATS-tillägget är installerat" />
+      </bt:ShortStrings>
+      <bt:LongStrings>
+        <bt:String id="Kats.RunButton.Tooltip"
+                   DefaultValue="Kör KATS-verktyget på det aktiva dokumentet." />
+        <bt:String id="Kats.OpenPaneButton.Tooltip"
+                   DefaultValue="Öppna KATS-panelen för status och fler verktyg." />
+        <bt:String id="Kats.GetStarted.Description"
+                   DefaultValue="Använd MGA-fliken för att köra KATS på det aktiva dokumentet." />
+      </bt:LongStrings>
+    </Resources>
+  </VersionOverrides>
+</OfficeApp>

@@ -57,7 +57,24 @@ Dedicated test suite at `tests/diacritics/` covers NFC, NFD, mixed normalization
 - **Fas 2** — first processor: `Signatur` (simplest; validates architecture)
 - **Fas 3** — metadata: `Mottagare`, `YttrandeSignatur`, `YttrandeParter`
 - **Fas 4** — economics chain: `Utlagg` → `ArgrupperTider` → `Arvode` → `ArvodeTotal`
-- **Fas 5** — UI: task pane (React + Fluent UI), ribbon command
+- **Fas 5** — UI: task pane (React), ribbon command, Office JS adapters, GitHub Pages release pipeline
 - **Fas 6** — parity verification against VBA on real documents
 - **Fas 7** — pilot rollout (3–5 users)
 - **Fas 8** — full rollout; VBA `.dotm` deprecated
+
+## Sideloading for development
+
+The bundle hosts at `https://ulrik-s.github.io/KATS-Addin/` once deployed. To
+test against a development build before that:
+
+1. `yarn build` — produces `dist/` containing `taskpane.html`, `commands.html`, `manifest.xml`, plus hashed JS/CSS assets.
+2. Serve `dist/` locally over HTTPS (Office requires it). Quick option: `npx serve dist -l https`.
+3. Open Word, then **Insert** → **My Add-ins** → **Upload My Add-in** and pick `dist/manifest.xml`. Edit the manifest's `SourceLocation` and `AppDomain` to point at your local HTTPS URL first.
+
+For production rollout, the M365 admin uploads `manifest.xml` from the GitHub Release into Admin Center → Integrated Apps. The bundle URL the manifest references is the GitHub Pages URL — no per-user install required.
+
+## Build environment variables
+
+- `KATS_VERSION` — overrides `package.json` version in the manifest.
+- `KATS_HOST_URL` — overrides the hosted bundle URL (default `https://ulrik-s.github.io/KATS-Addin`).
+- `KATS_ADDIN_GUID` — overrides the manifest GUID (default reads `manifest/guid.txt`).

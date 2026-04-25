@@ -5,7 +5,15 @@ import tseslint from 'typescript-eslint';
 import prettier from 'eslint-config-prettier';
 
 export default defineConfig([
-  globalIgnores(['.yarn/**', '.pnp.*', 'node_modules/**', 'dist/**', 'build/**', 'coverage/**']),
+  globalIgnores([
+    '.yarn/**',
+    '.pnp.*',
+    'node_modules/**',
+    'dist/**',
+    'build/**',
+    'coverage/**',
+    'scripts/**',
+  ]),
   {
     files: ['**/*.ts', '**/*.tsx', '**/*.js', '**/*.mjs', '**/*.cjs'],
     extends: [
@@ -17,7 +25,13 @@ export default defineConfig([
     languageOptions: {
       parserOptions: {
         projectService: {
-          allowDefaultProject: ['eslint.config.js', 'vitest.config.ts', '*.cjs', '*.mjs'],
+          allowDefaultProject: [
+            'eslint.config.js',
+            'vite.config.ts',
+            'vitest.config.ts',
+            '*.cjs',
+            '*.mjs',
+          ],
         },
         tsconfigRootDir: import.meta.dirname,
       },
