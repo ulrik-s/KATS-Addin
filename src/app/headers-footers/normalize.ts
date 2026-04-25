@@ -128,16 +128,14 @@ async function stripFooterTableBorders(bodies: readonly Word.Body[]): Promise<vo
   for (const tables of allTables) {
     for (const table of tables.items) {
       for (const loc of TABLE_BORDER_LOCS) {
-        const border = table.getBorder(loc);
-        border.type = Word.BorderType.none;
-        border.width = 0;
+        // Don't touch `border.width` — Word rejects `0` with
+        // InvalidArgument. type=none alone clears the border.
+        table.getBorder(loc).type = Word.BorderType.none;
       }
       for (const cells of cellsByTable[tableIdx] ?? []) {
         for (const cell of cells.items) {
           for (const loc of CELL_BORDER_LOCS) {
-            const border = cell.getBorder(loc);
-            border.type = Word.BorderType.none;
-            border.width = 0;
+            cell.getBorder(loc).type = Word.BorderType.none;
           }
         }
       }
