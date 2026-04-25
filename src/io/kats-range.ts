@@ -58,6 +58,12 @@ export interface TableKatsRange {
    * row/col out of range. Each paragraph is NFC-normalized by the caller.
    */
   setCellParagraphs(row: number, col: number, paragraphs: readonly string[]): Promise<void>;
+
+  /**
+   * Delete a row by 0-based index. Subsequent row indices shift down by
+   * one. Used by ARVODE and ARVODE_TOTAL to drop zero-amount rows.
+   */
+  deleteRow(row: number): Promise<void>;
 }
 
 /** Unified range type — every processor accepts this and narrows. */

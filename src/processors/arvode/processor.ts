@@ -1,0 +1,91 @@
+import { type KatsContext } from '../../core/context.js';
+import { ProcessorError } from '../../core/errors.js';
+import { type Processor, type TagName, requireTableRange, tagName } from '../../core/processor.js';
+import { type KatsRange, type TableKatsRange } from '../../io/kats-range.js';
+import {
+  getCategoryHoursFromContext,
+  getHearingMinutesFromContext,
+  shouldUseTaxaFromContext,
+} from '../argrupper-tider/state.js';
+import { ARVODE_ROW } from './schema.js';
+import { requireArvodeRead, requireArvodeState, setArvodeRead, setArvodeState } from './state.js';
+import { computeArvode } from './transform.js';
+
+const ARVODE_TAG: TagName = tagName('KATS_ARVODE');
+
+const REQUIRED_ROWS = ARVODE_ROW.utlagg + 1;
+const REQUIRED_COLS = 3;
+
+/**
+ * Renders the ARVODE summary table at `[[KATS_ARVODE]]`.
+ *
+ * Cross-processor inputs (read from ctx in transform):
+ *   - shouldUseTaxa flag           (from ARGRUPPER)
+ *   - hearingMinutes               (from ARGRUPPER)
+ *   - hours per category           (from ARGRUPPER)
+ *
+ * Sets `arvode.totalExMomsKr` for ARVODE_TOTAL to consume.
+ */
+export class ArvodeProcessor implements Processor {
+  readonly tag = ARVODE_TAG;
+
+  async read(range: KatsRange, ctx: KatsContext): Promise<void> {
+    const table = requireTableRange(range, this.tag, 'read');
+    if (table.rowCount < REQUIRED_ROWS) {
+      throw new ProcessorError(
+        `expected ≥${String(REQUIRED_ROWS)} rows, got ${String(table.rowCount)}`,
+        this.tag,
+        'read',
+      );
+    }
+    if (table.columnCount < REQUIRED_COLS) {
+      throw new ProcessorError(
+        `expected ≥${String(REQUIRED_COLS)} cols, got ${String(table.columnCount)}`,
+        this.tag,
+        'read',
+      );
+    }
+    const cells = await snapshotTable(table);
+    setArvodeRead(ctx, { cells });
+  }
+
+  transform(ctx: KatsContext): void {
+    const read = requireArvodeRead(ctx);
+    const useTaxa = shouldUseTaxaFromContext(ctx);
+    const hearingMinutes = getHearingMinutesFromContext(ctx) ?? 0;
+    const hours = getCategoryHoursFromContext(ctx) ?? {
+      arvode: 0,
+      arvodeHelg: 0,
+      tidsspillan: 0,
+      tidsspillanOvrigTid: 0,
+    };
+    setArvodeState(ctx, computeArvode({ read, useTaxa, hearingMinutes, hours }));
+  }
+
+  async render(range: KatsRange, ctx: KatsContext): Promise<void> {
+    const table = requireTableRange(range, this.tag, 'render');
+    const state = requireArvodeState(ctx);
+    for (const patch of state.patches) {
+      await table.setCellParagraphs(patch.row, patch.col, patch.paragraphs);
+    }
+    // rowsToDelete is already sorted descending so indices stay valid.
+    for (const row of state.rowsToDelete) {
+      await table.deleteRow(row);
+    }
+  }
+}
+
+async function snapshotTable(
+  table: TableKatsRange,
+): Promise<readonly (readonly (readonly string[])[])[]> {
+  const rows: string[][][] = [];
+  for (let r = 0; r < table.rowCount; r += 1) {
+    const row: string[][] = [];
+    for (let c = 0; c < table.columnCount; c += 1) {
+      const text = await table.getCellText(r, c);
+      row.push(text.length === 0 ? [] : text.split('\r'));
+    }
+    rows.push(row);
+  }
+  return rows;
+}
