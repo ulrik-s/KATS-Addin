@@ -29,6 +29,17 @@ export async function normalizeHeadersAndFooters(document: Word.Document): Promi
   sections.load('items');
   await document.context.sync();
 
+  // Without `differentFirstPageHeaderFooter = true`, Word ignores
+  // the firstPage header/footer body — it falls back to the primary
+  // header/footer for page 1. Documents that have never been given a
+  // distinct first-page layout therefore showed nothing on page 1
+  // even though we wrote into the firstPage body. Set the flag
+  // unconditionally; it's idempotent on docs that already have it.
+  for (const section of sections.items) {
+    section.pageSetup.differentFirstPageHeaderFooter = true;
+  }
+  await document.context.sync();
+
   const firstPageFooters: Word.Body[] = [];
   for (const section of sections.items) {
     setHtmlBody(section.getHeader(Word.HeaderFooterType.firstPage), FIRST_PAGE_HEADER_HTML);
