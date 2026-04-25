@@ -69,9 +69,20 @@ const args = [
 ];
 
 // `npx` instead of yarn's bin because office-addin-debugging pulls in
-// opentelemetry deps that conflict with Yarn PnP. npx isolates them.
+// opentelemetry deps that conflict with Yarn PnP. We must also stop
+// the PnP loader from leaking into the npx child via NODE_OPTIONS,
+// otherwise PnP intercepts npx's own `require()` and chokes on the
+// CJS-vs-ESM mismatch in the @microsoft/app-manifest dep tree.
+const childEnv = { ...process.env };
+delete childEnv.NODE_OPTIONS;
+delete childEnv.YARN_NODE_LINKER;
+delete childEnv.YARN_PNP_DATA_PATH;
+
 const child = spawn('npx', args, {
-  cwd: root,
+  // Run from /tmp so the child also can't auto-discover .pnp.cjs by
+  // walking up from the project root.
+  cwd: '/tmp',
+  env: childEnv,
   stdio: 'inherit',
   shell: false,
 });

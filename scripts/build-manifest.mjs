@@ -51,19 +51,9 @@ console.log(
   `manifest.xml written → ${outPath}\n  HOST_URL = ${hostUrl}\n  VERSION  = ${version}\n  GUID     = ${guid}`,
 );
 
-if (isDev) {
-  const isMac = process.platform === 'darwin';
-  if (isMac) {
-    console.log(
-      `\nSideload (Mac, en gång): kör \`yarn sideload\` i ett separat fönster.\n` +
-        `Det kopierar manifestet till Words wef-mapp; sedan startar du om Word.\n\n` +
-        `(Mac Word saknar dialog för XML-uppladdning — wef-mappen är vägen.)`,
-    );
-  } else {
-    console.log(
-      `\nSideload (en gång):\n  1. Starta Word.\n  2. Infoga → Mina tillägg → Ladda upp eget tillägg.\n  3. Välj filen ovan (${outPath}).\n` +
-        `  4. Acceptera HTTPS-certifikatet om Word frågar.\n\n` +
-        `KATS-fliken syns nu i ribbon. Vid kodändringar laddar Vite om task panen automatiskt.`,
-    );
-  }
+if (isDev && process.env.KATS_SUPPRESS_DEV_HINT !== '1') {
+  console.log(
+    `\nNästa steg: \`yarn sideload\` registrerar manifestet i Word via\n` +
+      `Microsofts officiella office-addin-debugging-verktyg.`,
+  );
 }
