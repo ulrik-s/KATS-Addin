@@ -16,6 +16,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "start": "yarn build:manifest:dev && vite",
+    "sideload": "yarn build:manifest:dev && node scripts/sideload-mac.mjs",
     "build": "vite build && yarn build:manifest",
     "build:manifest": "node scripts/build-manifest.mjs",
     "build:manifest:dev": "node scripts/build-manifest.mjs --dev",

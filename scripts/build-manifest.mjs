@@ -52,9 +52,18 @@ console.log(
 );
 
 if (isDev) {
-  console.log(
-    `\nSideload (en gång):\n  1. Starta Word.\n  2. Infoga → Mina tillägg → Ladda upp eget tillägg.\n  3. Välj filen ovan (${outPath}).\n` +
-      `  4. Acceptera HTTPS-certifikatet om Word frågar.\n\n` +
-      `MGA-fliken syns nu i ribbon. Vid kodändringar laddar Vite om task panen automatiskt.`,
-  );
+  const isMac = process.platform === 'darwin';
+  if (isMac) {
+    console.log(
+      `\nSideload (Mac, en gång): kör \`yarn sideload\` i ett separat fönster.\n` +
+        `Det kopierar manifestet till Words wef-mapp; sedan startar du om Word.\n\n` +
+        `(Mac Word saknar dialog för XML-uppladdning — wef-mappen är vägen.)`,
+    );
+  } else {
+    console.log(
+      `\nSideload (en gång):\n  1. Starta Word.\n  2. Infoga → Mina tillägg → Ladda upp eget tillägg.\n  3. Välj filen ovan (${outPath}).\n` +
+        `  4. Acceptera HTTPS-certifikatet om Word frågar.\n\n` +
+        `MGA-fliken syns nu i ribbon. Vid kodändringar laddar Vite om task panen automatiskt.`,
+    );
+  }
 }

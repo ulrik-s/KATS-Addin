@@ -64,20 +64,41 @@ Dedicated test suite at `tests/diacritics/` covers NFC, NFD, mixed normalization
 
 ## Sideloading for development
 
+Two terminals — one for the dev server, one for the sideload.
+
+**Terminal 1** — dev server (keep running):
+
 ```
 yarn start
 ```
 
-Generates `manifest/manifest.dev.xml` pointing at `https://localhost:3000`, then starts the Vite dev server with HTTPS (`@vitejs/plugin-basic-ssl` auto-issues a self-signed cert).
+Generates `manifest/manifest.dev.xml` (HOST_URL = `https://localhost:3000`), then starts the Vite dev server with HTTPS (`@vitejs/plugin-basic-ssl` auto-issues a self-signed cert).
 
-Then once:
+**Terminal 2** — sideload into Word:
+
+### Mac
+
+```
+yarn sideload
+```
+
+Copies `manifest/manifest.dev.xml` into `~/Library/Containers/com.microsoft.Word/Data/Documents/wef/` (Word's sideload folder). Then **fully quit Word (Cmd-Q)** and reopen — the MGA tab appears in the ribbon.
+
+> Mac Word does NOT expose an "Upload My Add-in" dialog — the wef-folder approach is the supported path.
+> _Tools → Templates and Add-ins is for legacy VBA `.dotm` templates and is unrelated to Office add-ins._
+
+To remove the add-in: `rm ~/Library/Containers/com.microsoft.Word/Data/Documents/wef/<guid>.manifest.xml`.
+
+### Windows
 
 1. Open Word.
-2. **Infoga** → **Mina tillägg** → **Ladda upp eget tillägg**.
+2. **Insert** → **My Add-ins** → **Upload My Add-in**.
 3. Pick `manifest/manifest.dev.xml`.
 4. Accept the localhost HTTPS cert if Word asks.
 
-The MGA tab appears in the ribbon; clicking **Öppna KATS** shows the task pane. Subsequent code edits hot-reload via Vite — no need to re-sideload.
+### After sideloading (both platforms)
+
+Click **Öppna KATS** on the MGA ribbon tab to show the task pane. Subsequent code edits hot-reload via Vite — no re-sideload needed.
 
 For production rollout, the M365 admin uploads `manifest.xml` from the GitHub Release into Admin Center → Integrated Apps. The bundle URL the manifest references is the GitHub Pages URL — no per-user install required.
 
