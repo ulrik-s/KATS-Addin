@@ -76,31 +76,38 @@ Generates `manifest/manifest.dev.xml` (HOST_URL = `https://localhost:3000`), the
 
 **Terminal 2** — sideload into Word:
 
-### Mac
+### Mac (and Windows)
 
 ```
 yarn sideload
 ```
 
-Copies `manifest/manifest.dev.xml` into `~/Library/Containers/com.microsoft.Word/Data/Documents/wef/` (Word's sideload folder). Then **fully quit Word (Cmd-Q)** and reopen — the MGA tab appears in the ribbon.
+Wraps Microsoft's official `office-addin-debugging start` tool. It writes the manifest to whichever sideload folder the installed Word version actually scans (newer M365 builds moved the path), launches Word, and registers the add-in. Note: it will close Word first if running.
 
-> Mac Word does NOT expose an "Upload My Add-in" dialog — the wef-folder approach is the supported path.
-> _Tools → Templates and Add-ins is for legacy VBA `.dotm` templates and is unrelated to Office add-ins._
+> _Tools → Templates and Add-ins is for legacy VBA `.dotm` templates and is unrelated to Office add-ins. The dev manifest doesn't show up there._
 
-To remove the add-in: `rm ~/Library/Containers/com.microsoft.Word/Data/Documents/wef/<guid>.manifest.xml`.
+> The naive "drop manifest into `Documents/wef/`" approach silently stops working on newer Mac M365 builds — Word stops scanning that folder. The dev tool knows the right path per version.
 
-### Windows
+To remove the dev add-in afterwards:
 
-1. Open Word.
-2. **Insert** → **My Add-ins** → **Upload My Add-in**.
-3. Pick `manifest/manifest.dev.xml`.
-4. Accept the localhost HTTPS cert if Word asks.
+```
+npx --yes office-addin-debugging stop manifest/manifest.dev.xml --app word
+```
 
-### After sideloading (both platforms)
+### After sideloading
 
-Click **Öppna KATS** on the MGA ribbon tab to show the task pane. Subsequent code edits hot-reload via Vite — no re-sideload needed.
+Click **Öppna panel** on the KATS ribbon tab to show the task pane. Subsequent code edits hot-reload via Vite — no re-sideload needed.
 
-For production rollout, the M365 admin uploads `manifest.xml` from the GitHub Release into Admin Center → Integrated Apps. The bundle URL the manifest references is the GitHub Pages URL — no per-user install required.
+### Fallback: M365 Admin Center deploy
+
+When the dev tool also fails (managed-tenant policy blocking developer add-ins, etc.), use the production rollout path even for development:
+
+1. `yarn build` — produces `dist/manifest.xml` pointing at GitHub Pages.
+2. Push the bundle to a temporary publicly-reachable HTTPS host, OR push a tag to deploy via GitHub Pages.
+3. **admin.microsoft.com** → **Settings** → **Integrated apps** → **Upload custom apps** → pick `dist/manifest.xml`.
+4. Assign to your own user. Provisioning takes 5–30 minutes; restart Word and the add-in arrives via the official channel.
+
+This is the production rollout flow anyway — doing it for dev verifies the eventual user experience.
 
 ## Build environment variables
 

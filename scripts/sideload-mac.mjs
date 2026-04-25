@@ -1,19 +1,24 @@
 #!/usr/bin/env node
 // @ts-check
 /**
- * Sideload the dev manifest into Word for Mac.
+ * Sideload the dev manifest into Word on macOS via Microsoft's
+ * official `office-addin-debugging` tool.
  *
- * Mac Word does not expose an "Upload My Add-in" dialog like Windows
- * Word does — sideloading is done by dropping the manifest into the
- * `wef` folder under the Word container, which Word scans on launch.
+ * Wraps `office-addin-debugging start ... --no-debug --no-live-reload`
+ * so we get just the sideload step (without the tool also trying to
+ * spawn its own dev server — `yarn start` runs Vite separately).
  *
- * After running this script, RESTART Word. The MGA tab appears in the
- * ribbon, populated from the running `yarn start` dev server.
+ * Why use this instead of dropping the manifest into
+ * `Documents/wef/`: recent Office for Mac builds changed the
+ * sideload path, and the dev-tool knows the right destination per
+ * version. The legacy wef-folder approach silently stops working on
+ * newer M365 installs.
  *
- * Reference: https://learn.microsoft.com/office/dev/add-ins/testing/sideload-an-office-add-in-on-mac
+ * Reference: https://learn.microsoft.com/javascript/api/overview/office-addin-debugging
  */
-import { copyFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
-import { homedir, platform } from 'node:os';
+import { existsSync } from 'node:fs';
+import { spawn } from 'node:child_process';
+import { platform } from 'node:os';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -35,34 +40,42 @@ if (!existsSync(manifestPath)) {
   process.exit(1);
 }
 
-const guidPath = resolve(root, 'manifest/guid.txt');
-const guid = readFileSync(guidPath, 'utf8').trim();
-
-const wefDir = resolve(homedir(), 'Library/Containers/com.microsoft.Word/Data/Documents/wef');
-mkdirSync(wefDir, { recursive: true });
-
-// Mac Word identifies sideloaded manifests by the GUID in the
-// filename — using the manifest's own Id keeps multiple add-ins
-// from clashing.
-const targetPath = resolve(wefDir, `${guid}.manifest.xml`);
-copyFileSync(manifestPath, targetPath);
-
 console.log(
   [
-    `KATS-tillägget sideloaded.`,
-    `  Källa: ${manifestPath}`,
-    `  Mål:   ${targetPath}`,
+    `Sideloadar via office-addin-debugging…`,
+    `  Manifest: ${manifestPath}`,
     ``,
-    `Nästa steg:`,
-    `  1. Stäng alla Word-fönster (helst hela Word-appen).`,
-    `  2. Starta om Word.`,
-    `  3. Öppna ett dokument — KATS-fliken syns i ribbon.`,
-    `     (Om den inte syns: Insert → Add-ins → My Add-ins och välj KATS där.)`,
+    `Verktyget öppnar Word automatiskt och registrerar tillägget.`,
+    `Om Word redan är öppet stängs det ner först.`,
     ``,
-    `Vid första klicket: acceptera HTTPS-certifikatet för https://localhost:3000.`,
-    `Vid kodändringar: Vite hot-reloadar automatiskt — ingen ny sideload behövs.`,
+    `Förutsätter att \`yarn start\` redan kör i ett annat fönster`,
+    `(Vite på https://localhost:3000).`,
     ``,
-    `För att ta bort tillägget igen:`,
-    `  rm "${targetPath}"`,
   ].join('\n'),
 );
+
+const args = [
+  '--yes',
+  'office-addin-debugging',
+  'start',
+  manifestPath,
+  'desktop',
+  '--app',
+  'word',
+  '--debug-method',
+  'web',
+  '--no-debug',
+  '--no-live-reload',
+];
+
+// `npx` instead of yarn's bin because office-addin-debugging pulls in
+// opentelemetry deps that conflict with Yarn PnP. npx isolates them.
+const child = spawn('npx', args, {
+  cwd: root,
+  stdio: 'inherit',
+  shell: false,
+});
+
+child.on('exit', (code) => {
+  process.exit(code ?? 0);
+});
