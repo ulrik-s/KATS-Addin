@@ -58,7 +58,16 @@ function setHtmlBody(body: Word.Body, html: string): void {
   body.insertHtml(html, Word.InsertLocation.replace);
 }
 
-/** Set every border location on every table inside `bodies` to `none`. */
+/**
+ * Strip every border on every table — and every cell of every row —
+ * inside `bodies`. Word draws table gridlines from BOTH the table
+ * itself and each individual cell, so the table-level pass alone
+ * leaves cell borders intact and the visual frame remains.
+ *
+ * Setting both `.type = none` and `.width = 0` defensively — Word
+ * has been observed to render a 0.5pt line even when type is none
+ * if width is non-zero.
+ */
 async function stripFooterTableBorders(bodies: readonly Word.Body[]): Promise<void> {
   if (bodies.length === 0) return;
   const ctx = bodies[0]?.context;
@@ -72,7 +81,7 @@ async function stripFooterTableBorders(bodies: readonly Word.Body[]): Promise<vo
   }
   await ctx.sync();
 
-  const BORDER_LOCATIONS: Word.BorderLocation[] = [
+  const TABLE_BORDER_LOCS: Word.BorderLocation[] = [
     Word.BorderLocation.top,
     Word.BorderLocation.bottom,
     Word.BorderLocation.left,
@@ -80,12 +89,59 @@ async function stripFooterTableBorders(bodies: readonly Word.Body[]): Promise<vo
     Word.BorderLocation.insideHorizontal,
     Word.BorderLocation.insideVertical,
   ];
+  const CELL_BORDER_LOCS: Word.BorderLocation[] = [
+    Word.BorderLocation.top,
+    Word.BorderLocation.bottom,
+    Word.BorderLocation.left,
+    Word.BorderLocation.right,
+  ];
 
+  // Round 2: load each table's rows + cells.
+  const cellsByTable: Word.TableCellCollection[][] = [];
   for (const tables of allTables) {
     for (const table of tables.items) {
-      for (const loc of BORDER_LOCATIONS) {
-        table.getBorder(loc).type = Word.BorderType.none;
+      const rows = table.rows;
+      rows.load('items');
+      cellsByTable.push([]);
+    }
+  }
+  await ctx.sync();
+
+  // Round 3: load cells per row.
+  let tableIdx = 0;
+  for (const tables of allTables) {
+    for (const table of tables.items) {
+      const rowCells: Word.TableCellCollection[] = [];
+      for (const row of table.rows.items) {
+        const cells = row.cells;
+        cells.load('items');
+        rowCells.push(cells);
       }
+      cellsByTable[tableIdx] = rowCells;
+      tableIdx += 1;
+    }
+  }
+  await ctx.sync();
+
+  // Round 4: clear borders on tables AND cells.
+  tableIdx = 0;
+  for (const tables of allTables) {
+    for (const table of tables.items) {
+      for (const loc of TABLE_BORDER_LOCS) {
+        const border = table.getBorder(loc);
+        border.type = Word.BorderType.none;
+        border.width = 0;
+      }
+      for (const cells of cellsByTable[tableIdx] ?? []) {
+        for (const cell of cells.items) {
+          for (const loc of CELL_BORDER_LOCS) {
+            const border = cell.getBorder(loc);
+            border.type = Word.BorderType.none;
+            border.width = 0;
+          }
+        }
+      }
+      tableIdx += 1;
     }
   }
   await ctx.sync();
