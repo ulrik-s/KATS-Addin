@@ -27,24 +27,32 @@ export const FIRST_PAGE_HEADER_HTML =
  *
  * Cambria 9pt matches the source styling.
  */
+// Border-removal CSS for the table + every cell. Word's HTML import
+// draws default table gridlines unless ALL of these are present:
+//   • <table border="0"> attribute
+//   • table CSS `border:none;border-style:none;border-collapse:collapse`
+//   • per-cell `border:none;border-style:none`
+//   • MSO-specific `mso-border-alt:none` (Word looks at this when
+//     converting HTML borders to OOXML borders, even though it's not
+//     in the W3C CSS spec).
+const NO_BORDERS_TD = 'border:none;border-style:none;mso-border-alt:none;padding:0;';
+const NO_BORDERS_TABLE =
+  'border:none;border-style:none;mso-border-alt:none;border-collapse:collapse;width:100%;margin:0;';
+const TEXT_STYLE = 'margin:0;font-family:Cambria,serif;font-size:9pt;text-align:center;';
+
 export const FIRST_PAGE_FOOTER_HTML = [
   `<hr style="border:none;border-top:1pt solid #000;margin:0 0 4pt 0;" />`,
-  // border="0" + border-collapse + per-cell border:none — Word otherwise
-  // draws default table gridlines even when style:none is set on <table>.
-  `<table border="0" cellspacing="0" cellpadding="0"`,
-  ` style="width:100%;border:none;border-collapse:collapse;margin:0;">`,
-  `<tr>`,
-  `<td width="42" style="border:none;vertical-align:middle;padding:0;">`,
+  `<table border="0" cellspacing="0" cellpadding="0" style="${NO_BORDERS_TABLE}">`,
+  `<tr style="border:none;">`,
+  `<td width="42" style="${NO_BORDERS_TD}vertical-align:middle;">`,
   `<img src="${FIRMINFO_DATA_URL}" alt="Sveriges Advokatsamfund" width="42" height="60" />`,
   `</td>`,
-  `<td style="border:none;vertical-align:middle;padding:0 0 0 8pt;">`,
-  `<p style="margin:0;font-family:Cambria,serif;font-size:9pt;">`,
-  `Moll &amp; Grosskopf Advokater AB`,
-  `</p>`,
-  `<p style="margin:0;font-family:Cambria,serif;font-size:9pt;">`,
+  `<td style="${NO_BORDERS_TD}vertical-align:middle;padding:0 0 0 8pt;">`,
+  `<p style="${TEXT_STYLE}">Moll &amp; Grosskopf Advokater AB</p>`,
+  `<p style="${TEXT_STYLE}">`,
   `Tel: +46(0)46-20 01 51 &nbsp;∽&nbsp; www.mgadvokater.se &nbsp;∽&nbsp; info@mgadvokater.se`,
   `</p>`,
-  `<p style="margin:0;font-family:Cambria,serif;font-size:9pt;">`,
+  `<p style="${TEXT_STYLE}">`,
   `Arvoden bankgiro 899-9344 &nbsp;∽&nbsp; VAT nr: SE559124788601 &nbsp;∽&nbsp; Godkänd för F-skatt`,
   `</p>`,
   `</td>`,
