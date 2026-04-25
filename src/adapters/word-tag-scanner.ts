@@ -103,8 +103,14 @@ export async function discoverKatsTags(
           `internal: tables.items[0] missing for ${d.tag as unknown as string}`,
         );
       }
-      const columnCount = t.values[0]?.length ?? 0;
-      range = new WordTableKatsRange(t, t.rowCount, columnCount);
+      // Heading rows in KATS templates are typically a single merged cell
+      // spanning all columns. `values[0].length` would then be 1 even
+      // though the data rows have e.g. 5 cells. Take the max across rows
+      // to get the table's logical column count.
+      const columnCount = t.values.reduce((max, row) => (row.length > max ? row.length : max), 0);
+      // Defensive copy so external table mutations don't poison our cache.
+      const cachedValues = t.values.map((row) => [...row]);
+      range = new WordTableKatsRange(t, t.rowCount, columnCount, cachedValues);
     } else {
       range = new WordTextKatsRange(d.inner);
     }
