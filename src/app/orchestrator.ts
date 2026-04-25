@@ -12,6 +12,7 @@ import { YttrandeSignaturProcessor } from '../processors/yttrande-signatur/index
 import { WordKatsDocument } from '../adapters/word-document.js';
 import { discoverKatsTags } from '../adapters/word-tag-scanner.js';
 import { getCurrentUser } from './current-user.js';
+import { normalizeHeadersAndFooters } from './headers-footers/normalize.js';
 
 export interface RunResult {
   readonly tagsProcessed: number;
@@ -97,6 +98,12 @@ function orderDiscoveries(discoveries: readonly Discovery[]): Discovery[] {
  */
 export async function runOnActiveDocument(): Promise<RunResult> {
   return Word.run(async (context) => {
+    // Normalize headers/footers first — runs unconditionally on every
+    // KATS-processed document, even ones without any tags. Doing it
+    // before tag scanning means the canonical h/f are in place before
+    // processors potentially rely on document layout.
+    await normalizeHeadersAndFooters(context.document);
+
     const body = context.document.body;
     const discoveries = await discoverKatsTags(body, PROCESSING_ORDER);
 

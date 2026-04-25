@@ -32,8 +32,11 @@
   </Hosts>
 
   <Requirements>
-    <Sets DefaultMinVersion="1.4">
-      <Set Name="WordApi" MinVersion="1.4" />
+    <!-- WordApi 1.5: needed for Range.insertField() in
+         normalize-headers-footers.ts. Supported in Word for Mac
+         (M365), Word for Windows (M365), Word on the web. -->
+    <Sets DefaultMinVersion="1.5">
+      <Set Name="WordApi" MinVersion="1.5" />
     </Sets>
   </Requirements>
 
