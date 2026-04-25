@@ -15,8 +15,10 @@
     "format:check": "prettier --check .",
     "test": "vitest run",
     "test:watch": "vitest",
+    "start": "yarn build:manifest:dev && vite",
     "build": "vite build && yarn build:manifest",
     "build:manifest": "node scripts/build-manifest.mjs",
+    "build:manifest:dev": "node scripts/build-manifest.mjs --dev",
     "preview": "vite preview",
     "check": "yarn typecheck && yarn lint && yarn format:check && yarn test"
   },
@@ -31,6 +33,7 @@
     "@types/office-js": "^1.0.454",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-basic-ssl": "^2.0.0",
     "@vitejs/plugin-react": "^4.3.4",
     "eslint": "^9.15.0",
     "eslint-config-prettier": "^9.1.0",

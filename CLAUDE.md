@@ -64,12 +64,20 @@ Dedicated test suite at `tests/diacritics/` covers NFC, NFD, mixed normalization
 
 ## Sideloading for development
 
-The bundle hosts at `https://ulrik-s.github.io/KATS-Addin/` once deployed. To
-test against a development build before that:
+```
+yarn start
+```
 
-1. `yarn build` — produces `dist/` containing `taskpane.html`, `commands.html`, `manifest.xml`, plus hashed JS/CSS assets.
-2. Serve `dist/` locally over HTTPS (Office requires it). Quick option: `npx serve dist -l https`.
-3. Open Word, then **Insert** → **My Add-ins** → **Upload My Add-in** and pick `dist/manifest.xml`. Edit the manifest's `SourceLocation` and `AppDomain` to point at your local HTTPS URL first.
+Generates `manifest/manifest.dev.xml` pointing at `https://localhost:3000`, then starts the Vite dev server with HTTPS (`@vitejs/plugin-basic-ssl` auto-issues a self-signed cert).
+
+Then once:
+
+1. Open Word.
+2. **Infoga** → **Mina tillägg** → **Ladda upp eget tillägg**.
+3. Pick `manifest/manifest.dev.xml`.
+4. Accept the localhost HTTPS cert if Word asks.
+
+The MGA tab appears in the ribbon; clicking **Öppna KATS** shows the task pane. Subsequent code edits hot-reload via Vite — no need to re-sideload.
 
 For production rollout, the M365 admin uploads `manifest.xml` from the GitHub Release into Admin Center → Integrated Apps. The bundle URL the manifest references is the GitHub Pages URL — no per-user install required.
 

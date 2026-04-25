@@ -1148,6 +1148,15 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@vitejs/plugin-basic-ssl@npm:^2.0.0":
+  version: 2.3.0
+  resolution: "@vitejs/plugin-basic-ssl@npm:2.3.0"
+  peerDependencies:
+    vite: ^6.0.0 || ^7.0.0 || ^8.0.0
+  checksum: 10c0/754ebe29a61ac694e665477187f425b7c3b41e30af8d392613250bf65f9b2741e7f5a6ec00a3f88f1a14bfda96e93c6b5e0f75e86357737bc4e92c8dc455c1c0
+  languageName: node
+  linkType: hard
+
 "@vitejs/plugin-react@npm:^4.3.4":
   version: 4.7.0
   resolution: "@vitejs/plugin-react@npm:4.7.0"
@@ -2914,6 +2923,7 @@ __metadata:
     "@types/office-js": "npm:^1.0.454"
     "@types/react": "npm:^18.3.12"
     "@types/react-dom": "npm:^18.3.1"
+    "@vitejs/plugin-basic-ssl": "npm:^2.0.0"
     "@vitejs/plugin-react": "npm:^4.3.4"
     eslint: "npm:^9.15.0"
     eslint-config-prettier: "npm:^9.1.0"

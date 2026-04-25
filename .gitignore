@@ -18,6 +18,9 @@ dist/
 build/
 *.tsbuildinfo
 
+# Dev manifest — generated per machine by `yarn start`, never committed
+manifest/manifest.dev.xml
+
 # Test output
 coverage/
 .vitest/
