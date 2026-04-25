@@ -32,6 +32,7 @@ export interface UtlaggDependencies {
  */
 export class UtlaggProcessor implements Processor {
   readonly tag = UTLAGG_TAG;
+  readonly requiresRangeKind = 'table' as const;
 
   constructor(private readonly deps: UtlaggDependencies) {}
 

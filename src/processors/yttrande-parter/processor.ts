@@ -36,6 +36,7 @@ export interface YttrandeParterDependencies {
  */
 export class YttrandeParterProcessor implements Processor {
   readonly tag = YTTRANDE_PARTER_TAG;
+  readonly requiresRangeKind = 'text' as const;
 
   constructor(private readonly deps: YttrandeParterDependencies) {}
 

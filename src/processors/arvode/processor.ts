@@ -51,6 +51,7 @@ interface CategoryRates {
  */
 export class ArvodeProcessor implements Processor {
   readonly tag = ARVODE_TAG;
+  readonly requiresRangeKind = 'table' as const;
 
   constructor(private readonly deps: ArvodeDependencies = DEFAULT_DEPS) {}
 

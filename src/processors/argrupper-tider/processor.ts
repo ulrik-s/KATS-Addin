@@ -31,6 +31,7 @@ export interface ArgrupperDependencies {
  */
 export class ArgrupperTiderProcessor implements Processor {
   readonly tag = ARGRUPPER_TAG;
+  readonly requiresRangeKind = 'table' as const;
 
   constructor(private readonly deps: ArgrupperDependencies) {}
 

@@ -69,12 +69,22 @@ export function App(): JSX.Element {
     setStatus({ kind: 'busy', message: 'Processar dokumentet…' });
     try {
       const result = await runOnActiveDocument();
+      const { tagsProcessed, skippedTags } = result;
+      const lines: string[] = [];
+      if (tagsProcessed > 0) {
+        lines.push(`Klar — ${String(tagsProcessed)} tagg(ar) processade.`);
+      } else if (skippedTags.length === 0) {
+        lines.push('Inga KATS-taggar hittades i dokumentet.');
+      }
+      if (skippedTags.length > 0) {
+        lines.push(
+          `Hoppade över ${String(skippedTags.length)} tagg(ar) med fel format ` +
+            `(markörer borttagna): ${skippedTags.join(', ')}.`,
+        );
+      }
       setStatus({
-        kind: result.tagsProcessed > 0 ? 'success' : 'info',
-        message:
-          result.tagsProcessed > 0
-            ? `Klar — ${String(result.tagsProcessed)} tagg(ar) processade.`
-            : 'Inga KATS-taggar hittades i dokumentet.',
+        kind: tagsProcessed > 0 ? 'success' : 'info',
+        message: lines.join('\n'),
       });
     } catch (cause) {
       const message = formatError(cause);

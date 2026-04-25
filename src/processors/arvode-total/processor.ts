@@ -27,6 +27,7 @@ const ARVODE_TOTAL_TAG: TagName = tagName('KATS_ARVODE_TOTAL');
  */
 export class ArvodeTotalProcessor implements Processor {
   readonly tag = ARVODE_TOTAL_TAG;
+  readonly requiresRangeKind = 'table' as const;
 
   async read(range: KatsRange, ctx: KatsContext): Promise<void> {
     const table = requireTableRange(range, this.tag, 'read');

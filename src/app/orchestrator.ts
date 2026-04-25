@@ -17,6 +17,14 @@ import { getCategoryRates, getRoundingMode } from './settings.js';
 
 export interface RunResult {
   readonly tagsProcessed: number;
+  /**
+   * Tags whose marker pair was found but whose inner content didn't
+   * match the processor's expected range kind — most commonly an
+   * UTLAGG/ARVODE tag with empty paragraphs instead of a table
+   * because the drafter forgot to insert one. Markers are stripped
+   * from the doc as usual; processing is skipped for these.
+   */
+  readonly skippedTags: readonly string[];
 }
 
 /**
@@ -112,15 +120,31 @@ export async function runOnActiveDocument(): Promise<RunResult> {
     const discoveries = await discoverKatsTags(body, PROCESSING_ORDER);
 
     if (discoveries.length === 0) {
-      return { tagsProcessed: 0 };
+      return { tagsProcessed: 0, skippedTags: [] };
     }
 
     const registry = buildRegistry(context.document);
     const ctx = new KatsContext();
     const ordered = orderDiscoveries(discoveries);
-    await runPipeline(ordered, registry, ctx);
+
+    // Skip discoveries whose range kind doesn't match the processor's
+    // requirement (e.g. UTLAGG markers wrapping empty paragraphs
+    // instead of a table). The scanner already stripped marker text,
+    // so the user's doc ends up clean either way.
+    const filtered: Discovery[] = [];
+    const skippedTags: string[] = [];
+    for (const d of ordered) {
+      const proc = registry.get(d.tag);
+      if (proc?.requiresRangeKind !== undefined && proc.requiresRangeKind !== d.range.kind) {
+        skippedTags.push(d.tag);
+        continue;
+      }
+      filtered.push(d);
+    }
+
+    await runPipeline(filtered, registry, ctx);
     await context.sync();
 
-    return { tagsProcessed: ordered.length };
+    return { tagsProcessed: filtered.length, skippedTags };
   });
 }

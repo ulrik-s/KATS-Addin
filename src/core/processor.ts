@@ -34,6 +34,19 @@ export interface Processor {
   readonly tag: TagName;
 
   /**
+   * What kind of range the processor needs. The orchestrator skips
+   * discoveries whose actual `range.kind` doesn't match — typical
+   * cause: drafter forgot to put a table between START/END markers,
+   * leaving empty paragraphs. Skipping keeps the run going and the
+   * scanner has already stripped the marker text, so the user can
+   * fix the doc and re-run without leftover markers.
+   *
+   * Optional so processors that genuinely accept either kind can opt
+   * out (none today).
+   */
+  readonly requiresRangeKind?: 'text' | 'table';
+
+  /**
    * Phase 1. Read document content into ctx. Runs before any processor's
    * transform or render. Should mutate ctx only via this processor's slot.
    */

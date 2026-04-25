@@ -31,6 +31,7 @@ export interface SignaturDependencies {
  */
 export class SignaturProcessor implements Processor {
   readonly tag = SIGNATUR_TAG;
+  readonly requiresRangeKind = 'text' as const;
 
   constructor(private readonly deps: SignaturDependencies) {}
 

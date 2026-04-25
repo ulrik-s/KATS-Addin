@@ -25,6 +25,7 @@ const ADDRESS_CELL_COL = 1;
  */
 export class MottagareProcessor implements Processor {
   readonly tag = MOTTAGARE_TAG;
+  readonly requiresRangeKind = 'table' as const;
 
   async read(range: KatsRange, ctx: KatsContext): Promise<void> {
     const table = requireTableRange(range, this.tag, 'read');

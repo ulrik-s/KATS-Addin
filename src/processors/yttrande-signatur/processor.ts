@@ -23,6 +23,7 @@ export interface YttrandeSignaturDependencies {
  */
 export class YttrandeSignaturProcessor implements Processor {
   readonly tag = YTTRANDE_SIGNATUR_TAG;
+  readonly requiresRangeKind = 'text' as const;
 
   constructor(private readonly deps: YttrandeSignaturDependencies) {}
 
