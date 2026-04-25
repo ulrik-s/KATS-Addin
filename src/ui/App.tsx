@@ -1,6 +1,7 @@
 import { useState, type ChangeEvent, type JSX } from 'react';
 import { KATS_ADDIN_VERSION } from '../index.js';
 import { getStoredUserKey, listAllUsers, setCurrentUserKey } from '../app/current-user.js';
+import { formatError } from '../app/format-error.js';
 import { runOnActiveDocument } from '../app/orchestrator.js';
 import { mailDebugDocument } from '../app/mail-debug.js';
 
@@ -27,7 +28,7 @@ export function App(): JSX.Element {
             : 'Inga KATS-taggar hittades i dokumentet.',
       });
     } catch (cause) {
-      const message = cause instanceof Error ? cause.message : String(cause);
+      const message = formatError(cause);
       setStatus({ kind: 'error', message: `Misslyckades: ${message}` });
     }
   }
@@ -40,7 +41,7 @@ export function App(): JSX.Element {
         message: 'Felrapport öppnad i e-postklienten — bifoga gärna originaldokumentet.',
       });
     } catch (cause) {
-      const message = cause instanceof Error ? cause.message : String(cause);
+      const message = formatError(cause);
       setStatus({ kind: 'error', message: `Kunde inte öppna e-post: ${message}` });
     }
   }
