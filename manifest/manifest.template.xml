@@ -113,11 +113,14 @@
         <bt:Url id="Kats.GetStarted.LearnMoreUrl" DefaultValue="https://github.com/ulrik-s/KATS-Addin" />
       </bt:Urls>
       <bt:ShortStrings>
-        <bt:String id="Kats.Tab.Label" DefaultValue="MGA" />
-        <bt:String id="Kats.Group.Label" DefaultValue="KATS" />
-        <bt:String id="Kats.RunButton.Label" DefaultValue="Processa KATS" />
+        <!-- Tab label "KATS" (not "MGA") — the legacy VBA .dotm template
+             also defines an "MGA" tab; same-label tabs collide on Mac
+             Word and the add-in tab gets suppressed. -->
+        <bt:String id="Kats.Tab.Label" DefaultValue="KATS" />
+        <bt:String id="Kats.Group.Label" DefaultValue="Verktyg" />
+        <bt:String id="Kats.RunButton.Label" DefaultValue="Processa" />
         <bt:String id="Kats.RunButton.Title" DefaultValue="Processa KATS" />
-        <bt:String id="Kats.OpenPaneButton.Label" DefaultValue="Öppna KATS" />
+        <bt:String id="Kats.OpenPaneButton.Label" DefaultValue="Öppna panel" />
         <bt:String id="Kats.OpenPaneButton.Title" DefaultValue="Öppna KATS-panelen" />
         <bt:String id="Kats.GetStarted.Title" DefaultValue="KATS-tillägget är installerat" />
       </bt:ShortStrings>
@@ -127,7 +130,7 @@
         <bt:String id="Kats.OpenPaneButton.Tooltip"
                    DefaultValue="Öppna KATS-panelen för status och fler verktyg." />
         <bt:String id="Kats.GetStarted.Description"
-                   DefaultValue="Använd MGA-fliken för att köra KATS på det aktiva dokumentet." />
+                   DefaultValue="Använd KATS-fliken för att köra KATS på det aktiva dokumentet." />
       </bt:LongStrings>
     </Resources>
   </VersionOverrides>

@@ -63,7 +63,7 @@ if (isDev) {
     console.log(
       `\nSideload (en gång):\n  1. Starta Word.\n  2. Infoga → Mina tillägg → Ladda upp eget tillägg.\n  3. Välj filen ovan (${outPath}).\n` +
         `  4. Acceptera HTTPS-certifikatet om Word frågar.\n\n` +
-        `MGA-fliken syns nu i ribbon. Vid kodändringar laddar Vite om task panen automatiskt.`,
+        `KATS-fliken syns nu i ribbon. Vid kodändringar laddar Vite om task panen automatiskt.`,
     );
   }
 }
