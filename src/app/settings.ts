@@ -7,7 +7,6 @@ import { readStorage, writeStorage } from './storage.js';
  */
 
 const ROUNDING_KEY = 'kats:roundingMode';
-const HOURLY_RATE_KEY = 'kats:hourlyRateKr';
 
 /**
  * Two policies for ARVODE per-row rounding:
@@ -33,32 +32,67 @@ export function setRoundingMode(mode: RoundingMode): void {
   writeStorage(ROUNDING_KEY, mode);
 }
 
+// ──────────────────────── Category rates ──────────────────────
+
 /**
- * Optional hourly-rate override. When set, `parseRateKr()` of the
- * ARVODE row's spec cell is ignored and this value is used for
- * every category (arvode, arvode helg, tidsspillan, tidsspillan
- * övrig tid). When unset, each row's spec cell determines the rate.
+ * Per-category billable rates in kr/h. The four categories match the
+ * ARVODE table rows: timtaxa (arvode), timtaxa helg (arvode helg),
+ * tidsspillan, and tidsspillan helg (tidsspillan övrig tid).
  *
- * Stored as the user-entered string so we can preserve "" (empty =
- * unset) without ambiguity. Parsed lazily.
+ * Each has a hardcoded firm default; user-entered values override
+ * per category. Empty / unset / unparseable input falls back to the
+ * default at compute time, so the UI shows the default as a
+ * placeholder and the field can be safely cleared without breaking
+ * the run.
  */
-export function getHourlyRateOverride(): number | undefined {
-  const raw = readStorage(HOURLY_RATE_KEY);
-  if (raw === undefined) return undefined;
+export interface CategoryRates {
+  readonly arvode: number;
+  readonly arvodeHelg: number;
+  readonly tidsspillan: number;
+  readonly tidsspillanOvrigTid: number;
+}
+
+export const DEFAULT_RATES: CategoryRates = {
+  arvode: 1626,
+  arvodeHelg: 3256,
+  tidsspillan: 1587,
+  tidsspillanOvrigTid: 975,
+};
+
+const RATE_KEYS: Record<keyof CategoryRates, string> = {
+  arvode: 'kats:rate:arvode',
+  arvodeHelg: 'kats:rate:arvodeHelg',
+  tidsspillan: 'kats:rate:tidsspillan',
+  tidsspillanOvrigTid: 'kats:rate:tidsspillanOvrigTid',
+};
+
+/** Resolved rates with firm defaults filled in for empty/invalid storage. */
+export function getCategoryRates(): CategoryRates {
+  return {
+    arvode: resolveRate('arvode'),
+    arvodeHelg: resolveRate('arvodeHelg'),
+    tidsspillan: resolveRate('tidsspillan'),
+    tidsspillanOvrigTid: resolveRate('tidsspillanOvrigTid'),
+  };
+}
+
+/** Persist user input verbatim (incl. empty string = "use default"). */
+export function setCategoryRate(category: keyof CategoryRates, raw: string): void {
+  writeStorage(RATE_KEYS[category], raw);
+}
+
+/** Stored raw value (or empty string when never set / cleared). */
+export function getCategoryRateRaw(category: keyof CategoryRates): string {
+  return readStorage(RATE_KEYS[category]) ?? '';
+}
+
+function resolveRate(category: keyof CategoryRates): number {
+  const raw = readStorage(RATE_KEYS[category]);
+  if (raw === undefined) return DEFAULT_RATES[category];
   const trimmed = raw.trim();
-  if (trimmed.length === 0) return undefined;
-  // Accept both "1500" and "1 500" and "1500,50" and "1500.50".
+  if (trimmed.length === 0) return DEFAULT_RATES[category];
+  // Accept "1500" / "1 500" / "1500,50" / "1500.50".
   const cleaned = trimmed.replace(/\s+/g, '').replace(',', '.');
   const n = Number(cleaned);
-  return Number.isFinite(n) && n > 0 ? n : undefined;
-}
-
-/** Set the override. Empty / whitespace string clears it. */
-export function setHourlyRateOverride(raw: string): void {
-  writeStorage(HOURLY_RATE_KEY, raw);
-}
-
-/** Read the raw string (for the input field's controlled value). */
-export function getHourlyRateOverrideRaw(): string {
-  return readStorage(HOURLY_RATE_KEY) ?? '';
+  return Number.isFinite(n) && n > 0 ? n : DEFAULT_RATES[category];
 }

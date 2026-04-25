@@ -22,8 +22,18 @@ export interface ArvodeDependencies {
    * total, keep per-row exact). User-controlled from the task pane.
    */
   readonly getRoundingMode: () => 'per-row' | 'sum-only';
-  /** Optional hourly-rate override that wins over the doc's spec cell. */
-  readonly getHourlyRateOverrideKr: () => number | undefined;
+  /**
+   * Per-category billable rates in kr/h. Returns undefined to fall
+   * back to parsing the doc's spec cells (legacy / test path).
+   */
+  readonly getCategoryRatesKr: () => CategoryRates | undefined;
+}
+
+interface CategoryRates {
+  readonly arvode: number;
+  readonly arvodeHelg: number;
+  readonly tidsspillan: number;
+  readonly tidsspillanOvrigTid: number;
 }
 
 /**
@@ -75,7 +85,7 @@ export class ArvodeProcessor implements Processor {
       tidsspillanOvrigTid: 0,
     };
     const roundingMode = this.deps.getRoundingMode();
-    const override = this.deps.getHourlyRateOverrideKr();
+    const rates = this.deps.getCategoryRatesKr();
     setArvodeState(
       ctx,
       computeArvode({
@@ -84,7 +94,7 @@ export class ArvodeProcessor implements Processor {
         hearingMinutes,
         hours,
         roundingMode,
-        ...(override !== undefined ? { hourlyRateOverrideKr: override } : {}),
+        ...(rates !== undefined ? { categoryRatesKr: rates } : {}),
       }),
     );
   }
@@ -102,10 +112,10 @@ export class ArvodeProcessor implements Processor {
   }
 }
 
-/** Backwards-compatible default: legacy court-mode behavior. */
+/** Backwards-compatible default: legacy court-mode behavior, doc-driven rates. */
 const DEFAULT_DEPS: ArvodeDependencies = {
   getRoundingMode: () => 'per-row',
-  getHourlyRateOverrideKr: () => undefined,
+  getCategoryRatesKr: () => undefined,
 };
 
 async function snapshotTable(

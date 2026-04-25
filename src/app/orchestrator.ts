@@ -13,7 +13,7 @@ import { WordKatsDocument } from '../adapters/word-document.js';
 import { discoverKatsTags } from '../adapters/word-tag-scanner.js';
 import { getCurrentUser } from './current-user.js';
 import { normalizeHeadersAndFooters } from './headers-footers/normalize.js';
-import { getHourlyRateOverride, getRoundingMode } from './settings.js';
+import { getCategoryRates, getRoundingMode } from './settings.js';
 
 export interface RunResult {
   readonly tagsProcessed: number;
@@ -55,7 +55,7 @@ function buildRegistry(document: Word.Document): MapProcessorRegistry {
     new ArgrupperTiderProcessor({ now }),
     new ArvodeProcessor({
       getRoundingMode,
-      getHourlyRateOverrideKr: getHourlyRateOverride,
+      getCategoryRatesKr: getCategoryRates,
     }),
     new ArvodeTotalProcessor(),
     new SignaturProcessor({ now, getCurrentUser: user }),

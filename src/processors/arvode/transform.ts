@@ -41,11 +41,17 @@ export interface ComputeArvodeInput {
    */
   readonly roundingMode?: 'per-row' | 'sum-only';
   /**
-   * Optional. When set, overrides `parseRateKr()` of each row's spec
-   * cell — every category bills at this rate. When undefined, the
-   * doc's per-row spec text drives the rate.
+   * Optional. Per-category rate override (kr/h) — when provided,
+   * each category uses its own rate from this map instead of
+   * parsing the doc's spec cell. Production passes resolved rates
+   * from the task pane. Tests can omit to fall back to parseRateKr.
    */
-  readonly hourlyRateOverrideKr?: number;
+  readonly categoryRatesKr?: {
+    readonly arvode: number;
+    readonly arvodeHelg: number;
+    readonly tidsspillan: number;
+    readonly tidsspillanOvrigTid: number;
+  };
 }
 
 const HOURS_DECIMALS = 2;
@@ -206,8 +212,23 @@ function computeNormalPath(input: ComputeArvodeInput): ArvodeState {
 // ────────────────────────── Helpers ───────────────────────────
 
 function resolveRate(input: ComputeArvodeInput, rowIndex: number): number {
-  if (input.hourlyRateOverrideKr !== undefined && input.hourlyRateOverrideKr > 0) {
-    return input.hourlyRateOverrideKr;
+  // Production: rates come from the task pane (per-category map).
+  // Tests / legacy: parse from the row's spec cell.
+  if (input.categoryRatesKr !== undefined) {
+    const r = input.categoryRatesKr;
+    switch (rowIndex) {
+      case ARVODE_ROW.arvode:
+        return r.arvode;
+      case ARVODE_ROW.arvodeHelg:
+        return r.arvodeHelg;
+      case ARVODE_ROW.tidsspillan:
+        return r.tidsspillan;
+      case ARVODE_ROW.tidsspillanOvrigTid:
+        return r.tidsspillanOvrigTid;
+      default:
+      // fall through to parseRateKr for any other row (e.g. utlägg);
+      // those don't bill by hour.
+    }
   }
   return parseRateKr(cellText(input.read.cells, rowIndex, ARVODE_COL.spec));
 }

@@ -270,69 +270,77 @@ describe('computeArvode — rounding modes', () => {
   });
 });
 
-describe('computeArvode — hourly-rate override', () => {
-  it('overrides every category rate with the user value', () => {
-    // Doc says 850 kr/hr for arvode + tidsspillan; helg says 1250.
-    // Override = 1500 → all four use 1500.
+describe('computeArvode — per-category rate override', () => {
+  const FIRM_RATES = {
+    arvode: 1626,
+    arvodeHelg: 3256,
+    tidsspillan: 1587,
+    tidsspillanOvrigTid: 975,
+  };
+
+  it('uses each category-specific rate from categoryRatesKr', () => {
     const state = computeArvode({
       read: makeRead(STD_TABLE),
       useTaxa: false,
       hearingMinutes: 0,
-      hours: { ...ZERO_HOURS, arvode: 2, arvodeHelg: 1, tidsspillan: 1 },
-      hourlyRateOverrideKr: 1500,
+      hours: {
+        ...ZERO_HOURS,
+        arvode: 2,
+        arvodeHelg: 1,
+        tidsspillan: 1,
+        tidsspillanOvrigTid: 1,
+      },
+      categoryRatesKr: FIRM_RATES,
     });
     const arvodeAmt = state.patches.find((p) => p.row === 1 && p.col === 2);
     const helgAmt = state.patches.find((p) => p.row === 2 && p.col === 2);
     const tidsAmt = state.patches.find((p) => p.row === 3 && p.col === 2);
-    expect(arvodeAmt?.paragraphs).toEqual(['3 000,00 kr']);
-    expect(helgAmt?.paragraphs).toEqual(['1 500,00 kr']);
-    expect(tidsAmt?.paragraphs).toEqual(['1 500,00 kr']);
-    // Total = 3000 + 1500 + 1500 + 550 utlägg = 6550
-    expect(state.totalExMomsKr).toBe(6550);
+    const tidsOvrigAmt = state.patches.find((p) => p.row === 4 && p.col === 2);
+    expect(arvodeAmt?.paragraphs).toEqual(['3 252,00 kr']); // 2 × 1626
+    expect(helgAmt?.paragraphs).toEqual(['3 256,00 kr']); // 1 × 3256
+    expect(tidsAmt?.paragraphs).toEqual(['1 587,00 kr']); // 1 × 1587
+    expect(tidsOvrigAmt?.paragraphs).toEqual(['975,00 kr']); // 1 × 975
+    // Total = 3252 + 3256 + 1587 + 975 + 550 utlägg = 9620
+    expect(state.totalExMomsKr).toBe(9620);
   });
 
-  it('rewrites the spec column with the overridden rate', () => {
+  it('rewrites the spec column with the per-category rate', () => {
     const state = computeArvode({
       read: makeRead(STD_TABLE),
       useTaxa: false,
       hearingMinutes: 0,
-      hours: { ...ZERO_HOURS, arvode: 1.5 },
-      hourlyRateOverrideKr: 2000,
+      hours: { ...ZERO_HOURS, arvodeHelg: 1.5 },
+      categoryRatesKr: FIRM_RATES,
     });
-    const arvodeSpec = state.patches.find((p) => p.row === 1 && p.col === 1);
-    expect(arvodeSpec?.paragraphs).toEqual(['1,50 á 2 000 kr']);
+    const helgSpec = state.patches.find((p) => p.row === 2 && p.col === 1);
+    expect(helgSpec?.paragraphs).toEqual(['1,50 á 3 256 kr']);
   });
 
-  it('ignores override = 0 (treated as unset)', () => {
+  it('without categoryRatesKr falls back to parseRateKr (doc-driven)', () => {
     const state = computeArvode({
       read: makeRead(STD_TABLE),
       useTaxa: false,
       hearingMinutes: 0,
       hours: { ...ZERO_HOURS, arvode: 1 },
-      hourlyRateOverrideKr: 0,
     });
     const arvodeAmt = state.patches.find((p) => p.row === 1 && p.col === 2);
-    // Falls back to the doc's 850 kr/hr.
-    expect(arvodeAmt?.paragraphs).toEqual(['850,00 kr']);
+    expect(arvodeAmt?.paragraphs).toEqual(['850,00 kr']); // doc rate
   });
 
-  it('override + sum-only stack — exact rate × hours, rounded only at total', () => {
-    // 2.55 × 1500 = 3825.00 (no fractional kr at this rate; let's use a
-    // fractional that does produce öre)
-    // 1.555 × 1500 = 2332.50 — but hours rounds to 2 decimals so 1.555
-    // becomes 1.56 first → 2340.00. Use 1.55 instead: 2325.00 (no öre).
-    // Let me pick 1.13 × 1500 = 1695.00 — still no öre. Hmm rate 1500
-    // gives whole-kr products. Use 850 as override w/ fractional hours.
+  it('per-category rates + sum-only stack — exact products, rounded total', () => {
+    // 1.55 × 1626 = 2520.30 → kept exact in sum-only mode
     const state = computeArvode({
       read: makeRead(STD_TABLE),
       useTaxa: false,
       hearingMinutes: 0,
       hours: { ...ZERO_HOURS, arvode: 1.55 },
-      hourlyRateOverrideKr: 850, // same as doc but we go through the override path
+      categoryRatesKr: FIRM_RATES,
       roundingMode: 'sum-only',
     });
     const arvodeAmt = state.patches.find((p) => p.row === 1 && p.col === 2);
-    expect(arvodeAmt?.paragraphs).toEqual(['1 317,50 kr']);
+    expect(arvodeAmt?.paragraphs).toEqual(['2 520,30 kr']);
+    // Total = 2520.30 + 550 = 3070.30 → rounded to 3070
+    expect(state.totalExMomsKr).toBe(3070);
   });
 });
 

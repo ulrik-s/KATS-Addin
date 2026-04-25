@@ -5,9 +5,11 @@ import { formatError } from '../app/format-error.js';
 import { mailDebugDocument } from '../app/mail-debug.js';
 import { runOnActiveDocument } from '../app/orchestrator.js';
 import {
-  getHourlyRateOverrideRaw,
+  type CategoryRates,
+  DEFAULT_RATES,
+  getCategoryRateRaw,
   getRoundingMode,
-  setHourlyRateOverride,
+  setCategoryRate,
   setRoundingMode,
   type RoundingMode,
 } from '../app/settings.js';
@@ -32,11 +34,34 @@ const INPUT_STYLE: React.CSSProperties = {
   boxSizing: 'border-box',
 };
 
+interface RateField {
+  readonly key: keyof CategoryRates;
+  readonly label: string;
+}
+
+const RATE_FIELDS: readonly RateField[] = [
+  { key: 'arvode', label: 'Timtaxa (kr/h)' },
+  { key: 'arvodeHelg', label: 'Timtaxa helg (kr/h)' },
+  { key: 'tidsspillan', label: 'Tidsspillan (kr/h)' },
+  { key: 'tidsspillanOvrigTid', label: 'Tidsspillan helg (kr/h)' },
+];
+
+type RatesState = Record<keyof CategoryRates, string>;
+
+function readAllRates(): RatesState {
+  return {
+    arvode: getCategoryRateRaw('arvode'),
+    arvodeHelg: getCategoryRateRaw('arvodeHelg'),
+    tidsspillan: getCategoryRateRaw('tidsspillan'),
+    tidsspillanOvrigTid: getCategoryRateRaw('tidsspillanOvrigTid'),
+  };
+}
+
 export function App(): JSX.Element {
   const [status, setStatus] = useState<StatusState>({ kind: 'idle', message: '' });
   const [userKey, setUserKey] = useState<string>(getStoredUserKey() ?? '');
   const [roundingMode, setRoundingModeState] = useState<RoundingMode>(getRoundingMode());
-  const [hourlyRate, setHourlyRateState] = useState<string>(getHourlyRateOverrideRaw());
+  const [rates, setRatesState] = useState<RatesState>(readAllRates);
 
   const allUsers = listAllUsers();
 
@@ -83,10 +108,12 @@ export function App(): JSX.Element {
     setRoundingMode(mode);
   }
 
-  function onHourlyRateChange(event: ChangeEvent<HTMLInputElement>): void {
-    const value = event.target.value;
-    setHourlyRateState(value);
-    setHourlyRateOverride(value);
+  function makeRateChangeHandler(category: keyof CategoryRates) {
+    return (event: ChangeEvent<HTMLInputElement>): void => {
+      const value = event.target.value;
+      setRatesState((prev) => ({ ...prev, [category]: value }));
+      setCategoryRate(category, value);
+    };
   }
 
   return (
@@ -134,16 +161,20 @@ export function App(): JSX.Element {
         <option value="sum-only">Endast på summa</option>
       </select>
 
-      <label htmlFor="kats-rate">Timtaxa (kr/h)</label>
-      <input
-        id="kats-rate"
-        type="text"
-        inputMode="decimal"
-        value={hourlyRate}
-        placeholder="lämna tomt → från dokumentet"
-        onChange={onHourlyRateChange}
-        style={INPUT_STYLE}
-      />
+      {RATE_FIELDS.map((field) => (
+        <div key={field.key}>
+          <label htmlFor={`kats-rate-${field.key}`}>{field.label}</label>
+          <input
+            id={`kats-rate-${field.key}`}
+            type="text"
+            inputMode="decimal"
+            value={rates[field.key]}
+            placeholder={String(DEFAULT_RATES[field.key])}
+            onChange={makeRateChangeHandler(field.key)}
+            style={INPUT_STYLE}
+          />
+        </div>
+      ))}
 
       {status.message.length > 0 ? (
         <div className={statusClass(status.kind)}>{status.message}</div>
