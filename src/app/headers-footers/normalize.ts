@@ -42,7 +42,10 @@ export async function normalizeHeadersAndFooters(document: Word.Document): Promi
 }
 
 function setHtmlBody(body: Word.Body, html: string): void {
-  body.clear();
+  // `replace` substitutes the entire existing body content. Doing
+  // an explicit `clear()` first then `replace` can leave a trailing
+  // empty paragraph (Word counts the post-clear empty-paragraph as
+  // existing content) which then ends up as an extra blank line.
   body.insertHtml(html, Word.InsertLocation.replace);
 }
 
