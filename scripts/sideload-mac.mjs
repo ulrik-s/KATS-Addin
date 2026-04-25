@@ -16,9 +16,9 @@
  *
  * Reference: https://learn.microsoft.com/javascript/api/overview/office-addin-debugging
  */
-import { existsSync } from 'node:fs';
+import { existsSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { spawn } from 'node:child_process';
-import { platform } from 'node:os';
+import { platform, tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -69,19 +69,27 @@ const args = [
 ];
 
 // `npx` instead of yarn's bin because office-addin-debugging pulls in
-// opentelemetry deps that conflict with Yarn PnP. We must also stop
-// the PnP loader from leaking into the npx child via NODE_OPTIONS,
-// otherwise PnP intercepts npx's own `require()` and chokes on the
-// CJS-vs-ESM mismatch in the @microsoft/app-manifest dep tree.
+// opentelemetry deps that conflict with Yarn PnP. We need three guards
+// against the PnP loader leaking into the npx child:
+//   1. Clear NODE_OPTIONS so node doesn't auto-load .pnp.cjs.
+//   2. Clear YARN_* so yarn-hooks don't reinstate PnP.
+//   3. cwd into a clean tmp dir (with a stub package.json — the tool
+//      reads cwd's package.json) so the child can't even discover
+//      .pnp.cjs by walking up from the project root.
 const childEnv = { ...process.env };
 delete childEnv.NODE_OPTIONS;
 delete childEnv.YARN_NODE_LINKER;
 delete childEnv.YARN_PNP_DATA_PATH;
 
+const workDir = mkdtempSync(resolve(tmpdir(), 'kats-sideload-'));
+writeFileSync(
+  resolve(workDir, 'package.json'),
+  JSON.stringify({ name: 'kats-sideload-helper', version: '1.0.0', private: true }, null, 2),
+  'utf8',
+);
+
 const child = spawn('npx', args, {
-  // Run from /tmp so the child also can't auto-discover .pnp.cjs by
-  // walking up from the project root.
-  cwd: '/tmp',
+  cwd: workDir,
   env: childEnv,
   stdio: 'inherit',
   shell: false,
