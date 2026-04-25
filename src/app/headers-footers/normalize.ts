@@ -42,7 +42,7 @@ export async function normalizeHeadersAndFooters(document: Word.Document): Promi
 
   const firstPageFooters: Word.Body[] = [];
   for (const section of sections.items) {
-    setHtmlBody(section.getHeader(Word.HeaderFooterType.firstPage), FIRST_PAGE_HEADER_HTML);
+    setFirstPageHeader(section.getHeader(Word.HeaderFooterType.firstPage));
     const firstFooter = section.getFooter(Word.HeaderFooterType.firstPage);
     setHtmlBody(firstFooter, FIRST_PAGE_FOOTER_HTML);
     firstPageFooters.push(firstFooter);
@@ -67,6 +67,16 @@ function setHtmlBody(body: Word.Body, html: string): void {
   // empty paragraph (Word counts the post-clear empty-paragraph as
   // existing content) which then ends up as an extra blank line.
   body.insertHtml(html, Word.InsertLocation.replace);
+}
+
+function setFirstPageHeader(body: Word.Body): void {
+  setHtmlBody(body, FIRST_PAGE_HEADER_HTML);
+  // Word's HTML import doesn't reliably honour `text-align:center`
+  // on a <p> when it wraps a single inline image — the paragraph
+  // ends up left-aligned regardless. Force it through the Word.js
+  // paragraph API. Setting on a proxy queues for the next sync,
+  // which the caller's outer sync handles.
+  body.paragraphs.getFirst().alignment = Word.Alignment.centered;
 }
 
 /**
