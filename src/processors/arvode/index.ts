@@ -1,4 +1,4 @@
-export { ArvodeProcessor } from './processor.js';
+export { ArvodeProcessor, type ArvodeDependencies } from './processor.js';
 export {
   ARVODE_COL,
   ARVODE_READ_KEY,

@@ -1,5 +1,6 @@
 import { type KatsUser, resolveCurrentUser } from '../domain/user-db.js';
 import { USERS } from '../domain/users.data.js';
+import { readStorage, writeStorage } from './storage.js';
 
 /**
  * Where the user's preferred identity is stored in the browser. Office
@@ -32,23 +33,4 @@ export function getStoredUserKey(): string | undefined {
 /** All users, exposed for the task pane's user-picker. */
 export function listAllUsers(): readonly KatsUser[] {
   return USERS.users;
-}
-
-function readStorage(key: string): string | undefined {
-  try {
-    const value = globalThis.localStorage.getItem(key);
-    return value ?? undefined;
-  } catch {
-    // Some embedded browsers throw on storage access (private mode,
-    // strict origin policy, etc.) — treat as "not set".
-    return undefined;
-  }
-}
-
-function writeStorage(key: string, value: string): void {
-  try {
-    globalThis.localStorage.setItem(key, value);
-  } catch {
-    // No-op; caller can render an error.
-  }
 }

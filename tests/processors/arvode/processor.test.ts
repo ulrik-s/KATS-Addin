@@ -191,6 +191,151 @@ describe('computeArvode — taxa path', () => {
   });
 });
 
+describe('computeArvode — rounding modes', () => {
+  // Doc rate is 850 kr/hr in STD_TABLE.
+  // 1.55 hours × 850 kr = 1317.50 kr — fractional kr to make the
+  // mode difference observable.
+  const FRACTIONAL_HOURS: CategoryHours = { ...ZERO_HOURS, arvode: 1.55 };
+
+  it('per-row mode rounds each row to whole kr (default behavior)', () => {
+    const state = computeArvode({
+      read: makeRead(STD_TABLE),
+      useTaxa: false,
+      hearingMinutes: 0,
+      hours: FRACTIONAL_HOURS,
+      roundingMode: 'per-row',
+    });
+    const arvodeAmt = state.patches.find((p) => p.row === 1 && p.col === 2);
+    expect(arvodeAmt?.paragraphs).toEqual(['1 318,00 kr']);
+    expect(state.totalExMomsKr).toBe(1318 + 550); // 550 = utlägg
+  });
+
+  it('default rounding mode is per-row when not specified', () => {
+    const state = computeArvode({
+      read: makeRead(STD_TABLE),
+      useTaxa: false,
+      hearingMinutes: 0,
+      hours: FRACTIONAL_HOURS,
+    });
+    const arvodeAmt = state.patches.find((p) => p.row === 1 && p.col === 2);
+    expect(arvodeAmt?.paragraphs).toEqual(['1 318,00 kr']);
+  });
+
+  it('sum-only mode keeps per-row exact and rounds total at the end', () => {
+    const state = computeArvode({
+      read: makeRead(STD_TABLE),
+      useTaxa: false,
+      hearingMinutes: 0,
+      hours: FRACTIONAL_HOURS,
+      roundingMode: 'sum-only',
+    });
+    // Per-row stays at 1317,50 (no rounding to whole kr)
+    const arvodeAmt = state.patches.find((p) => p.row === 1 && p.col === 2);
+    expect(arvodeAmt?.paragraphs).toEqual(['1 317,50 kr']);
+    // Total = 1317.50 + 550 = 1867.50 → rounded to whole kr = 1868
+    expect(state.totalExMomsKr).toBe(1868);
+  });
+
+  it('sum-only with two fractional rows: each shows decimals, total rounded once', () => {
+    // Two rows that each carry öre, summing to a half-öre.
+    const state = computeArvode({
+      read: makeRead(STD_TABLE),
+      useTaxa: false,
+      hearingMinutes: 0,
+      // 0.55 × 850 = 467.50;  0.45 × 850 = 382.50;  sum = 850.00 + 550 utlägg
+      hours: { ...ZERO_HOURS, arvode: 0.55, tidsspillan: 0.45 },
+      roundingMode: 'sum-only',
+    });
+    const arvodeAmt = state.patches.find((p) => p.row === 1 && p.col === 2);
+    const tidsAmt = state.patches.find((p) => p.row === 3 && p.col === 2);
+    expect(arvodeAmt?.paragraphs).toEqual(['467,50 kr']);
+    expect(tidsAmt?.paragraphs).toEqual(['382,50 kr']);
+    expect(state.totalExMomsKr).toBe(467.5 + 382.5 + 550); // 1400 exact
+  });
+
+  it('per-row mode propagates rounding error to the total (sum of rounded ≠ rounded sum)', () => {
+    // Two rows that each round UP — drift accumulates.
+    // 0.51 × 850 = 433.50 → 434
+    // 0.49 × 850 = 416.50 → 417
+    // per-row sum:  434 + 417 + 550 = 1401
+    // exact sum:    433.50 + 416.50 + 550 = 1400  (sum-only would give this)
+    const state = computeArvode({
+      read: makeRead(STD_TABLE),
+      useTaxa: false,
+      hearingMinutes: 0,
+      hours: { ...ZERO_HOURS, arvode: 0.51, tidsspillan: 0.49 },
+      roundingMode: 'per-row',
+    });
+    expect(state.totalExMomsKr).toBe(1401);
+  });
+});
+
+describe('computeArvode — hourly-rate override', () => {
+  it('overrides every category rate with the user value', () => {
+    // Doc says 850 kr/hr for arvode + tidsspillan; helg says 1250.
+    // Override = 1500 → all four use 1500.
+    const state = computeArvode({
+      read: makeRead(STD_TABLE),
+      useTaxa: false,
+      hearingMinutes: 0,
+      hours: { ...ZERO_HOURS, arvode: 2, arvodeHelg: 1, tidsspillan: 1 },
+      hourlyRateOverrideKr: 1500,
+    });
+    const arvodeAmt = state.patches.find((p) => p.row === 1 && p.col === 2);
+    const helgAmt = state.patches.find((p) => p.row === 2 && p.col === 2);
+    const tidsAmt = state.patches.find((p) => p.row === 3 && p.col === 2);
+    expect(arvodeAmt?.paragraphs).toEqual(['3 000,00 kr']);
+    expect(helgAmt?.paragraphs).toEqual(['1 500,00 kr']);
+    expect(tidsAmt?.paragraphs).toEqual(['1 500,00 kr']);
+    // Total = 3000 + 1500 + 1500 + 550 utlägg = 6550
+    expect(state.totalExMomsKr).toBe(6550);
+  });
+
+  it('rewrites the spec column with the overridden rate', () => {
+    const state = computeArvode({
+      read: makeRead(STD_TABLE),
+      useTaxa: false,
+      hearingMinutes: 0,
+      hours: { ...ZERO_HOURS, arvode: 1.5 },
+      hourlyRateOverrideKr: 2000,
+    });
+    const arvodeSpec = state.patches.find((p) => p.row === 1 && p.col === 1);
+    expect(arvodeSpec?.paragraphs).toEqual(['1,50 á 2 000 kr']);
+  });
+
+  it('ignores override = 0 (treated as unset)', () => {
+    const state = computeArvode({
+      read: makeRead(STD_TABLE),
+      useTaxa: false,
+      hearingMinutes: 0,
+      hours: { ...ZERO_HOURS, arvode: 1 },
+      hourlyRateOverrideKr: 0,
+    });
+    const arvodeAmt = state.patches.find((p) => p.row === 1 && p.col === 2);
+    // Falls back to the doc's 850 kr/hr.
+    expect(arvodeAmt?.paragraphs).toEqual(['850,00 kr']);
+  });
+
+  it('override + sum-only stack — exact rate × hours, rounded only at total', () => {
+    // 2.55 × 1500 = 3825.00 (no fractional kr at this rate; let's use a
+    // fractional that does produce öre)
+    // 1.555 × 1500 = 2332.50 — but hours rounds to 2 decimals so 1.555
+    // becomes 1.56 first → 2340.00. Use 1.55 instead: 2325.00 (no öre).
+    // Let me pick 1.13 × 1500 = 1695.00 — still no öre. Hmm rate 1500
+    // gives whole-kr products. Use 850 as override w/ fractional hours.
+    const state = computeArvode({
+      read: makeRead(STD_TABLE),
+      useTaxa: false,
+      hearingMinutes: 0,
+      hours: { ...ZERO_HOURS, arvode: 1.55 },
+      hourlyRateOverrideKr: 850, // same as doc but we go through the override path
+      roundingMode: 'sum-only',
+    });
+    const arvodeAmt = state.patches.find((p) => p.row === 1 && p.col === 2);
+    expect(arvodeAmt?.paragraphs).toEqual(['1 317,50 kr']);
+  });
+});
+
 describe('ArvodeProcessor — pipeline integration', () => {
   it('runs end-to-end with ARGRUPPER state in ctx', async () => {
     const registry = new MapProcessorRegistry();

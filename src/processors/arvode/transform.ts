@@ -20,13 +20,32 @@ import {
  *   tidsspillan > 1, drop the unused rows.
  *
  *   Normal path — write hours × rate to each non-zero category row,
- *   sum to total, drop zero-amount rows.
+ *   sum to total, drop zero-amount rows. Per-row rounding policy
+ *   (`roundingMode`) and rate override (`hourlyRateOverrideKr`) are
+ *   user-configurable from the task pane.
  */
 export interface ComputeArvodeInput {
   readonly read: ArvodeRead;
   readonly useTaxa: boolean;
   readonly hearingMinutes: number;
   readonly hours: CategoryHours;
+  /**
+   * "per-row" — round each row's amount to whole kr before summing.
+   *             Total = sum of rounded rows. Court (taxemål)
+   *             documents use this; the legacy VBA behavior. Default.
+   * "sum-only" — keep per-row exact (potentially fractional kr); only
+   *              the total is rounded to whole kr at the end.
+   *
+   * Optional in the input type so existing call sites that don't
+   * care about the distinction get the legacy behavior automatically.
+   */
+  readonly roundingMode?: 'per-row' | 'sum-only';
+  /**
+   * Optional. When set, overrides `parseRateKr()` of each row's spec
+   * cell — every category bills at this rate. When undefined, the
+   * doc's per-row spec text drives the rate.
+   */
+  readonly hourlyRateOverrideKr?: number;
 }
 
 const HOURS_DECIMALS = 2;
@@ -36,6 +55,9 @@ export function computeArvode(input: ComputeArvodeInput): ArvodeState {
 }
 
 // ───────────────────────── Taxa path ──────────────────────────
+//
+// Taxa amounts come from a fixed-tier lookup (whole kr by spec); the
+// rounding-mode and rate-override settings don't apply here.
 
 function computeTaxaPath(input: ComputeArvodeInput): ArvodeState {
   const cells = input.read.cells;
@@ -61,13 +83,13 @@ function computeTaxaPath(input: ComputeArvodeInput): ArvodeState {
   const tidsspillanHours = roundToDecimals(input.hours.tidsspillan, HOURS_DECIMALS);
   if (tidsspillanHours > 1) {
     const remaining = roundToDecimals(tidsspillanHours - 1, HOURS_DECIMALS);
-    const rate = parseRateKr(cellText(cells, ARVODE_ROW.tidsspillan, ARVODE_COL.spec));
+    const rate = resolveRate(input, ARVODE_ROW.tidsspillan);
     if (rate > 0 && remaining > 0) {
       const amount = roundToDecimals(remaining * rate, 0);
       patches.push({
         row: ARVODE_ROW.tidsspillan,
         col: ARVODE_COL.label,
-        paragraphs: ['TIDSSPILLAN \u00f6verstigande 1 tim'],
+        paragraphs: ['TIDSSPILLAN överstigande 1 tim'],
       });
       patches.push({
         row: ARVODE_ROW.tidsspillan,
@@ -84,8 +106,6 @@ function computeTaxaPath(input: ComputeArvodeInput): ArvodeState {
     }
   }
 
-  // Determine rows to drop. Always: arvodeHelg, tidsspillanOvrigTid.
-  // Tidsspillan only if not kept. Utlagg only if its amount cell is empty/0.
   const rowsToDelete: number[] = [];
   if (isCellAmountZero(cells, ARVODE_ROW.utlagg, ARVODE_COL.amount)) {
     rowsToDelete.push(ARVODE_ROW.utlagg);
@@ -105,14 +125,17 @@ function computeTaxaPath(input: ComputeArvodeInput): ArvodeState {
 function computeNormalPath(input: ComputeArvodeInput): ArvodeState {
   const cells = input.read.cells;
   const patches: CellPatch[] = [];
+  // Default rounding mode = "per-row" (legacy / court behavior).
+  const perRow = (input.roundingMode ?? 'per-row') === 'per-row';
 
   const renderedAmounts = new Map<number, number>();
   const apply = (rowIndex: number, hours: number): void => {
     const rounded = roundToDecimals(hours, HOURS_DECIMALS);
     if (rounded === 0) return;
-    const rate = parseRateKr(cellText(cells, rowIndex, ARVODE_COL.spec));
+    const rate = resolveRate(input, rowIndex);
     if (rate === 0) return;
-    const amount = roundToDecimals(rounded * rate, 0);
+    const exact = rounded * rate;
+    const displayAmount = perRow ? roundToDecimals(exact, 0) : roundToDecimals(exact, 2);
     patches.push({
       row: rowIndex,
       col: ARVODE_COL.spec,
@@ -121,9 +144,9 @@ function computeNormalPath(input: ComputeArvodeInput): ArvodeState {
     patches.push({
       row: rowIndex,
       col: ARVODE_COL.amount,
-      paragraphs: [formatSvMoney(amount)],
+      paragraphs: [formatSvMoney(displayAmount)],
     });
-    renderedAmounts.set(rowIndex, amount);
+    renderedAmounts.set(rowIndex, displayAmount);
   };
 
   apply(ARVODE_ROW.arvode, input.hours.arvode);
@@ -131,8 +154,9 @@ function computeNormalPath(input: ComputeArvodeInput): ArvodeState {
   apply(ARVODE_ROW.tidsspillan, input.hours.tidsspillan);
   apply(ARVODE_ROW.tidsspillanOvrigTid, input.hours.tidsspillanOvrigTid);
 
-  // Total is the sum of all amount cells in rows 1–5 (any row that has
-  // a digit in col 2). Includes UTLAGG as-is and any rendered category.
+  // Sum the amount column across all relevant rows. Rendered rows
+  // contribute the value we just stored (rounded or exact depending on
+  // mode); unrendered rows contribute whatever was already in the cell.
   let total = 0;
   for (const r of [
     ARVODE_ROW.arvode,
@@ -148,8 +172,12 @@ function computeNormalPath(input: ComputeArvodeInput): ArvodeState {
       total += readMoneyFromCell(cells, r, ARVODE_COL.amount);
     }
   }
+  // sum-only mode: round only the total, to whole kr.
+  // per-row mode: total is already a sum of whole-kr amounts; rounding
+  //               to 0 decimals is a no-op but keeps the schema-shape
+  //               (a number with at most 2 decimals) consistent.
+  const totalRounded = perRow ? roundToDecimals(total, 2) : roundToDecimals(total, 0);
 
-  // Drop any row whose amount cell is empty / zero (in the rendered view).
   const rowsToDelete: number[] = [];
   for (const r of [
     ARVODE_ROW.utlagg,
@@ -171,11 +199,18 @@ function computeNormalPath(input: ComputeArvodeInput): ArvodeState {
   return {
     patches,
     rowsToDelete: dedupeAndSortDescending(rowsToDelete),
-    totalExMomsKr: roundToDecimals(total, 2),
+    totalExMomsKr: totalRounded,
   };
 }
 
 // ────────────────────────── Helpers ───────────────────────────
+
+function resolveRate(input: ComputeArvodeInput, rowIndex: number): number {
+  if (input.hourlyRateOverrideKr !== undefined && input.hourlyRateOverrideKr > 0) {
+    return input.hourlyRateOverrideKr;
+  }
+  return parseRateKr(cellText(input.read.cells, rowIndex, ARVODE_COL.spec));
+}
 
 function cellText(
   cells: readonly (readonly (readonly string[])[])[],

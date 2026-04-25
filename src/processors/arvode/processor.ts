@@ -16,6 +16,16 @@ const ARVODE_TAG: TagName = tagName('KATS_ARVODE');
 const REQUIRED_ROWS = ARVODE_ROW.utlagg + 1;
 const REQUIRED_COLS = 3;
 
+export interface ArvodeDependencies {
+  /**
+   * Per-row (default, court-style) vs sum-only (round only the
+   * total, keep per-row exact). User-controlled from the task pane.
+   */
+  readonly getRoundingMode: () => 'per-row' | 'sum-only';
+  /** Optional hourly-rate override that wins over the doc's spec cell. */
+  readonly getHourlyRateOverrideKr: () => number | undefined;
+}
+
 /**
  * Renders the ARVODE summary table at `[[KATS_ARVODE]]`.
  *
@@ -24,10 +34,15 @@ const REQUIRED_COLS = 3;
  *   - hearingMinutes               (from ARGRUPPER)
  *   - hours per category           (from ARGRUPPER)
  *
+ * Settings inputs (resolved at transform time):
+ *   - rounding mode + hourly-rate override (from task pane)
+ *
  * Sets `arvode.totalExMomsKr` for ARVODE_TOTAL to consume.
  */
 export class ArvodeProcessor implements Processor {
   readonly tag = ARVODE_TAG;
+
+  constructor(private readonly deps: ArvodeDependencies = DEFAULT_DEPS) {}
 
   async read(range: KatsRange, ctx: KatsContext): Promise<void> {
     const table = requireTableRange(range, this.tag, 'read');
@@ -59,7 +74,19 @@ export class ArvodeProcessor implements Processor {
       tidsspillan: 0,
       tidsspillanOvrigTid: 0,
     };
-    setArvodeState(ctx, computeArvode({ read, useTaxa, hearingMinutes, hours }));
+    const roundingMode = this.deps.getRoundingMode();
+    const override = this.deps.getHourlyRateOverrideKr();
+    setArvodeState(
+      ctx,
+      computeArvode({
+        read,
+        useTaxa,
+        hearingMinutes,
+        hours,
+        roundingMode,
+        ...(override !== undefined ? { hourlyRateOverrideKr: override } : {}),
+      }),
+    );
   }
 
   async render(range: KatsRange, ctx: KatsContext): Promise<void> {
@@ -74,6 +101,12 @@ export class ArvodeProcessor implements Processor {
     }
   }
 }
+
+/** Backwards-compatible default: legacy court-mode behavior. */
+const DEFAULT_DEPS: ArvodeDependencies = {
+  getRoundingMode: () => 'per-row',
+  getHourlyRateOverrideKr: () => undefined,
+};
 
 async function snapshotTable(
   table: TableKatsRange,
