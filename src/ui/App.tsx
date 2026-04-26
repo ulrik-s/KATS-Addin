@@ -13,6 +13,7 @@ import {
   setRoundingMode,
   type RoundingMode,
 } from '../app/settings.js';
+import { LegacyUninstallHelp } from './LegacyUninstallHelp.js';
 
 interface StatusState {
   readonly kind: 'idle' | 'busy' | 'success' | 'error' | 'info';
@@ -189,6 +190,8 @@ export function App(): JSX.Element {
       {status.message.length > 0 ? (
         <div className={statusClass(status.kind)}>{status.message}</div>
       ) : null}
+
+      <LegacyUninstallHelp />
     </main>
   );
 }

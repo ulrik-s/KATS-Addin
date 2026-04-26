@@ -99,3 +99,69 @@ h1 {
   background: #fdf3f4;
   color: var(--kats-error);
 }
+
+/* Collapsible "uninstall legacy MGA .dotm" help section. Lives at the
+   bottom of the task pane — closed by default so it doesn't compete
+   with the primary controls. */
+.kats-help {
+  margin-top: 24px;
+  border-top: 1px solid var(--kats-border);
+  padding-top: 12px;
+  font-size: 13px;
+}
+
+.kats-help summary {
+  cursor: pointer;
+  color: var(--kats-muted);
+  font-weight: 500;
+  user-select: none;
+}
+
+.kats-help summary:hover {
+  color: var(--kats-fg);
+}
+
+.kats-help-body {
+  margin-top: 8px;
+  color: var(--kats-fg);
+}
+
+.kats-help-body p {
+  margin: 8px 0;
+}
+
+.kats-help-body ol {
+  padding-left: 20px;
+  margin: 4px 0 12px;
+}
+
+.kats-help-body li {
+  margin-bottom: 4px;
+}
+
+.kats-help-heading {
+  font-weight: 600;
+  margin-top: 12px !important;
+}
+
+.kats-help-path {
+  display: block;
+  margin: 4px 0;
+  padding: 4px 6px;
+  background: #f3f3f3;
+  border-radius: 2px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  word-break: break-all;
+  user-select: all;
+}
+
+.kats-help-note {
+  font-size: 12px;
+  color: var(--kats-muted);
+}
+
+.kats-help-body code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+}
