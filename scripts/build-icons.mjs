@@ -1,21 +1,26 @@
 #!/usr/bin/env node
 // @ts-check
 /**
- * Generate placeholder PNG icons for the manifest's IconUrl /
+ * Generate ribbon icons for the manifest's IconUrl /
  * HighResolutionIconUrl / VersionOverrides bt:Image entries.
  *
- * The Word ribbon needs *something* at every icon URL or it silently
- * suppresses the tab. These are intentionally simple — a flat colored
- * square with a "K" stamp — so the build is self-contained (no
- * design-time deps).
+ * Three distinct icon sets so each ribbon control has its own
+ * recognisable shape:
  *
- * Output: public/assets/icon-{16,32,64,80,128}.png
+ *   icon-{16,32,64,80,128}.png      — bold "K" on Office blue.
+ *                                     Used for the IconUrl + group icon.
+ *   process-{16,32,80}.png          — white play-triangle on green.
+ *                                     "Processa KATS" button.
+ *   panel-{16,32,80}.png            — white side-panel on purple.
+ *                                     "Öppna KATS-panelen" button.
  *
- * Vite's `public/` is copied verbatim into `dist/` at build time, and
- * served at root path during dev. The manifest's URLs map cleanly:
+ * No design-time deps — the encoder is a tiny pure-Node PNG writer
+ * (IHDR / IDAT / IEND + CRC32 + zlib for compression).
  *
- *   https://localhost:3000/assets/icon-32.png
- *   https://ulrik-s.github.io/KATS-Addin/assets/icon-32.png
+ * Vite copies `public/` verbatim into `dist/`, so the manifest URLs
+ * resolve cleanly:
+ *   https://localhost:3000/assets/process-32.png         (dev)
+ *   https://ulrik-s.github.io/KATS-Addin/assets/process-32.png  (prod)
  */
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -26,40 +31,56 @@ const here = fileURLToPath(new URL('.', import.meta.url));
 const root = resolve(here, '..');
 const outDir = resolve(root, 'public/assets');
 
-const SIZES = [16, 32, 64, 80, 128];
+// Office accent colours.
+const OFFICE_BLUE = { r: 0x00, g: 0x78, b: 0xd4, a: 0xff };
+const OFFICE_GREEN = { r: 0x10, g: 0x7c, b: 0x10, a: 0xff };
+const OFFICE_PURPLE = { r: 0x5c, g: 0x2d, b: 0x91, a: 0xff };
+const WHITE = { r: 0xff, g: 0xff, b: 0xff, a: 0xff };
 
-// Office-blue background, white "K". Matches Microsoft accent (~#0078d4).
-const BG = { r: 0x00, g: 0x78, b: 0xd4, a: 0xff };
-const FG = { r: 0xff, g: 0xff, b: 0xff, a: 0xff };
-
-const K_GLYPH = ['#...#', '#..#.', '#.#..', '##...', '#.#..', '#..#.', '#...#'];
+// Bold 6×7 K — chunkier than the previous 5×7 stroke so it reads
+// better at 16px ribbon size.
+const K_GLYPH = [
+  '##....##',
+  '##..##..',
+  '##.##...',
+  '####....',
+  '##.##...',
+  '##..##..',
+  '##....##',
+];
 
 /** @type {number[] | undefined} */
 let CRC_TABLE;
 
 mkdirSync(outDir, { recursive: true });
-for (const size of SIZES) {
-  const png = renderKatsIcon(size, BG, FG);
-  const path = resolve(outDir, `icon-${String(size)}.png`);
+
+for (const size of [16, 32, 64, 80, 128]) {
+  writeIcon(`icon-${String(size)}.png`, renderKatsIcon(size, OFFICE_BLUE, WHITE));
+}
+for (const size of [16, 32, 80]) {
+  writeIcon(`process-${String(size)}.png`, renderProcessIcon(size, OFFICE_GREEN, WHITE));
+  writeIcon(`panel-${String(size)}.png`, renderPanelIcon(size, OFFICE_PURPLE, WHITE));
+}
+
+/** @param {string} name @param {Buffer} png */
+function writeIcon(name, png) {
+  const path = resolve(outDir, name);
   writeFileSync(path, png);
   console.log(`wrote ${String(png.length)} bytes → ${path}`);
 }
 
 /**
- * @param {number} size
- * @param {{r:number,g:number,b:number,a:number}} bg
- * @param {{r:number,g:number,b:number,a:number}} fg
+ * Bold "K" centered on a coloured background.
+ * @param {number} size @param {RGBA} bg @param {RGBA} fg
  * @returns {Buffer}
  */
 function renderKatsIcon(size, bg, fg) {
-  // Build a `size × size` RGBA framebuffer + PNG-encode it.
-  // We draw a "K" using a tiny 5×7 bitmap font scaled to the icon size.
   const buf = new Uint8Array(size * size * 4);
   fillRect(buf, size, 0, 0, size, size, bg);
 
-  const glyphW = 5;
-  const glyphH = 7;
-  const padding = Math.floor(size * 0.15);
+  const glyphW = K_GLYPH[0]?.length ?? 8;
+  const glyphH = K_GLYPH.length;
+  const padding = Math.floor(size * 0.12);
   const pixelSize = Math.floor((size - padding * 2) / Math.max(glyphW, glyphH));
   const drawW = pixelSize * glyphW;
   const drawH = pixelSize * glyphH;
@@ -73,18 +94,82 @@ function renderKatsIcon(size, bg, fg) {
       fillRect(buf, size, ox + gx * pixelSize, oy + gy * pixelSize, pixelSize, pixelSize, fg);
     }
   }
-
   return encodePng(buf, size, size);
 }
 
 /**
- * @param {Uint8Array} buf
- * @param {number} stride
- * @param {number} x
- * @param {number} y
- * @param {number} w
- * @param {number} h
- * @param {{r:number,g:number,b:number,a:number}} c
+ * Right-pointing play triangle centered on a coloured background.
+ * @param {number} size @param {RGBA} bg @param {RGBA} fg
+ * @returns {Buffer}
+ */
+function renderProcessIcon(size, bg, fg) {
+  const buf = new Uint8Array(size * size * 4);
+  fillRect(buf, size, 0, 0, size, size, bg);
+
+  // Triangle bounding box: ~32% padding from edges, slightly nudged
+  // right so the visual centre matches the optical centre (a flat
+  // left edge looks left-heavy).
+  const triLeft = Math.round(size * 0.34);
+  const triRight = Math.round(size * 0.74);
+  const triTop = Math.round(size * 0.22);
+  const triBottom = Math.round(size * 0.78);
+  const vCenter = (triTop + triBottom) / 2;
+  const halfHeight = (triBottom - triTop) / 2;
+
+  for (let y = triTop; y < triBottom; y += 1) {
+    const distFromCenter = Math.abs(y - vCenter);
+    const fraction = halfHeight === 0 ? 0 : distFromCenter / halfHeight;
+    const rightEdge = Math.round(triLeft + (1 - fraction) * (triRight - triLeft));
+    if (rightEdge <= triLeft) continue;
+    fillRect(buf, size, triLeft, y, rightEdge - triLeft, 1, fg);
+  }
+  return encodePng(buf, size, size);
+}
+
+/**
+ * Side-panel pictogram: an outer frame with a narrow vertical bar at
+ * the right side, suggesting a docked task pane.
+ * @param {number} size @param {RGBA} bg @param {RGBA} fg
+ * @returns {Buffer}
+ */
+function renderPanelIcon(size, bg, fg) {
+  const buf = new Uint8Array(size * size * 4);
+  fillRect(buf, size, 0, 0, size, size, bg);
+
+  const margin = Math.max(2, Math.round(size * 0.18));
+  const left = margin;
+  const top = margin;
+  const right = size - margin;
+  const bottom = size - margin;
+  const stroke = Math.max(1, Math.round(size * 0.06));
+
+  // Outer frame border.
+  fillRect(buf, size, left, top, right - left, stroke, fg); // top
+  fillRect(buf, size, left, bottom - stroke, right - left, stroke, fg); // bottom
+  fillRect(buf, size, left, top, stroke, bottom - top, fg); // left
+  fillRect(buf, size, right - stroke, top, stroke, bottom - top, fg); // right
+
+  // Filled inner side-panel on the right (~35% of inner width).
+  const innerLeft = left + stroke;
+  const innerRight = right - stroke;
+  const innerTop = top + stroke;
+  const innerBottom = bottom - stroke;
+  const innerWidth = innerRight - innerLeft;
+  const panelLeft = innerLeft + Math.round(innerWidth * 0.65);
+  if (panelLeft < innerRight) {
+    fillRect(buf, size, panelLeft, innerTop, innerRight - panelLeft, innerBottom - innerTop, fg);
+  }
+  return encodePng(buf, size, size);
+}
+
+/**
+ * @typedef {{r:number, g:number, b:number, a:number}} RGBA
+ */
+
+/**
+ * @param {Uint8Array} buf @param {number} stride
+ * @param {number} x @param {number} y @param {number} w @param {number} h
+ * @param {RGBA} c
  */
 function fillRect(buf, stride, x, y, w, h, c) {
   for (let py = y; py < y + h; py += 1) {
@@ -99,26 +184,21 @@ function fillRect(buf, stride, x, y, w, h, c) {
 }
 
 /**
- * Encode raw RGBA pixels into a minimal PNG. Uses Node's zlib for IDAT
- * compression. Format reference: https://www.w3.org/TR/png/.
- *
+ * Encode raw RGBA pixels into a minimal PNG.
  * @param {Uint8Array} pixels — RGBA, length = w*h*4
- * @param {number} w
- * @param {number} h
+ * @param {number} w @param {number} h
  * @returns {Buffer}
  */
 function encodePng(pixels, w, h) {
-  // IHDR
   const ihdr = Buffer.alloc(13);
   ihdr.writeUInt32BE(w, 0);
   ihdr.writeUInt32BE(h, 4);
-  ihdr.writeUInt8(8, 8); // bit depth
-  ihdr.writeUInt8(6, 9); // color type: truecolor + alpha
-  ihdr.writeUInt8(0, 10); // compression
-  ihdr.writeUInt8(0, 11); // filter
-  ihdr.writeUInt8(0, 12); // interlace
+  ihdr.writeUInt8(8, 8);
+  ihdr.writeUInt8(6, 9);
+  ihdr.writeUInt8(0, 10);
+  ihdr.writeUInt8(0, 11);
+  ihdr.writeUInt8(0, 12);
 
-  // Each row needs a leading filter-type byte (0 = none).
   const rowStride = w * 4;
   const raw = Buffer.alloc((rowStride + 1) * h);
   for (let y = 0; y < h; y += 1) {
@@ -135,11 +215,7 @@ function encodePng(pixels, w, h) {
   ]);
 }
 
-/**
- * @param {string} type — 4-char chunk type
- * @param {Buffer} data
- * @returns {Buffer}
- */
+/** @param {string} type @param {Buffer} data @returns {Buffer} */
 function chunk(type, data) {
   const len = Buffer.alloc(4);
   len.writeUInt32BE(data.length, 0);
@@ -149,10 +225,7 @@ function chunk(type, data) {
   return Buffer.concat([len, typeBuf, data, crcBuf]);
 }
 
-/**
- * @param {Buffer} buf
- * @returns {number}
- */
+/** @param {Buffer} buf @returns {number} */
 function crc32(buf) {
   if (!CRC_TABLE) {
     CRC_TABLE = new Array(256);

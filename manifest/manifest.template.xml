@@ -73,9 +73,9 @@
                     <Description resid="Kats.RunButton.Tooltip" />
                   </Supertip>
                   <Icon>
-                    <bt:Image size="16" resid="Kats.Icon16" />
-                    <bt:Image size="32" resid="Kats.Icon32" />
-                    <bt:Image size="80" resid="Kats.Icon80" />
+                    <bt:Image size="16" resid="Kats.RunIcon16" />
+                    <bt:Image size="32" resid="Kats.RunIcon32" />
+                    <bt:Image size="80" resid="Kats.RunIcon80" />
                   </Icon>
                   <Action xsi:type="ExecuteFunction">
                     <FunctionName>katsRun</FunctionName>
@@ -88,9 +88,9 @@
                     <Description resid="Kats.OpenPaneButton.Tooltip" />
                   </Supertip>
                   <Icon>
-                    <bt:Image size="16" resid="Kats.Icon16" />
-                    <bt:Image size="32" resid="Kats.Icon32" />
-                    <bt:Image size="80" resid="Kats.Icon80" />
+                    <bt:Image size="16" resid="Kats.PanelIcon16" />
+                    <bt:Image size="32" resid="Kats.PanelIcon32" />
+                    <bt:Image size="80" resid="Kats.PanelIcon80" />
                   </Icon>
                   <Action xsi:type="ShowTaskpane">
                     <SourceLocation resid="Kats.Taskpane.Url" />
@@ -106,9 +106,18 @@
 
     <Resources>
       <bt:Images>
+        <!-- Group / default = bold "K" on Office blue -->
         <bt:Image id="Kats.Icon16" DefaultValue="{{HOST_URL}}/assets/icon-16.png" />
         <bt:Image id="Kats.Icon32" DefaultValue="{{HOST_URL}}/assets/icon-32.png" />
         <bt:Image id="Kats.Icon80" DefaultValue="{{HOST_URL}}/assets/icon-80.png" />
+        <!-- Run button = play triangle on Office green -->
+        <bt:Image id="Kats.RunIcon16" DefaultValue="{{HOST_URL}}/assets/process-16.png" />
+        <bt:Image id="Kats.RunIcon32" DefaultValue="{{HOST_URL}}/assets/process-32.png" />
+        <bt:Image id="Kats.RunIcon80" DefaultValue="{{HOST_URL}}/assets/process-80.png" />
+        <!-- Open-pane button = side panel on Office purple -->
+        <bt:Image id="Kats.PanelIcon16" DefaultValue="{{HOST_URL}}/assets/panel-16.png" />
+        <bt:Image id="Kats.PanelIcon32" DefaultValue="{{HOST_URL}}/assets/panel-32.png" />
+        <bt:Image id="Kats.PanelIcon80" DefaultValue="{{HOST_URL}}/assets/panel-80.png" />
       </bt:Images>
       <bt:Urls>
         <bt:Url id="Kats.Commands.Url" DefaultValue="{{HOST_URL}}/commands.html" />

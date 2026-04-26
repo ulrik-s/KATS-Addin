@@ -92,10 +92,16 @@ describe('extractParties — edge cases', () => {
     expect(r.rightParty).toBe('Östen');
   });
 
-  it('ignores malformed personnummer (4-digit year)', () => {
+  it('accepts long-form personnummer (YYYYMMDD-NNNN)', () => {
     const block = 'Åsa\n' + 'Åsa, 19800101-1234\n';
     const r = extractParties(block);
-    // Nothing matches `NNNNNN-NNNN` strictly.
+    expect(r.allNames).toEqual(['Åsa']);
+  });
+
+  it('ignores genuinely malformed personnummer (5- or 7-digit prefix)', () => {
+    const block = 'Åsa\n' + 'Åsa, 1980101-1234\n';
+    const r = extractParties(block);
+    // 1980101 is 7 digits — neither 6 nor 8, so no match.
     expect(r.allNames).toEqual(['Åsa']);
   });
 
