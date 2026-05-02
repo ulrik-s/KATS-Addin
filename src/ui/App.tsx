@@ -1,5 +1,5 @@
 import { useState, type ChangeEvent, type JSX } from 'react';
-import { KATS_ADDIN_VERSION } from '../index.js';
+import { KATS_ADDIN_VERSION, KATS_BUILD_KIND, KATS_GIT_BRANCH } from '../index.js';
 import { getStoredUserKey, listAllUsers, setCurrentUserKey } from '../app/current-user.js';
 import { formatError } from '../app/format-error.js';
 import { mailDebugDocument } from '../app/mail-debug.js';
@@ -130,7 +130,16 @@ export function App(): JSX.Element {
   return (
     <main>
       <h1>KATS</h1>
-      <p className="kats-version">version {KATS_ADDIN_VERSION}</p>
+      <p className="kats-version">
+        {KATS_BUILD_KIND === 'dev' ? (
+          <span className="kats-build-badge kats-build-badge-dev">DEV</span>
+        ) : KATS_BUILD_KIND === 'prod' ? (
+          <span className="kats-build-badge kats-build-badge-prod">PROD</span>
+        ) : null}
+        <span className="kats-version-text">
+          {KATS_ADDIN_VERSION} · {KATS_GIT_BRANCH}
+        </span>
+      </p>
 
       <div className="kats-buttons">
         <button

@@ -1,12 +1,29 @@
 import { defineConfig } from 'vite';
 import basicSsl from '@vitejs/plugin-basic-ssl';
 import react from '@vitejs/plugin-react';
+import { execSync } from 'node:child_process';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const here = fileURLToPath(new URL('.', import.meta.url));
 
 const DEV_PORT = 3000;
+
+/**
+ * Run a shell command, return its stdout trimmed, or `fallback` if the
+ * command fails (e.g. git not installed, not a working tree, detached
+ * state). Used at build/serve time to stamp git provenance into the
+ * bundle so the task pane can display dev-vs-prod / branch / commit
+ * — sideloaded dev builds and admin-deployed prod builds both show up
+ * as KATS menus in Word and need to be tellable apart.
+ */
+function safeShell(cmd: string, fallback: string): string {
+  try {
+    return execSync(cmd, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+  } catch {
+    return fallback;
+  }
+}
 
 /**
  * Vite config for the KATS Word Add-in.
@@ -25,23 +42,33 @@ const DEV_PORT = 3000;
  * paths must be RELATIVE (`base: './'`). Otherwise Word would fetch
  * `/assets/foo.js` against its own host instead of GitHub Pages.
  */
-export default defineConfig(({ command }) => ({
-  base: './',
-  plugins: command === 'serve' ? [react(), basicSsl()] : [react()],
-  server: {
-    port: DEV_PORT,
-    strictPort: true,
-    host: 'localhost',
-  },
-  build: {
-    outDir: 'dist',
-    emptyOutDir: true,
-    sourcemap: true,
-    rollupOptions: {
-      input: {
-        taskpane: resolve(here, 'taskpane.html'),
-        commands: resolve(here, 'commands.html'),
+export default defineConfig(({ command }) => {
+  const isDev = command === 'serve';
+  return {
+    base: './',
+    plugins: isDev ? [react(), basicSsl()] : [react()],
+    define: {
+      __KATS_GIT_DESCRIBE__: JSON.stringify(
+        safeShell('git describe --always --dirty --broken', 'unknown'),
+      ),
+      __KATS_GIT_BRANCH__: JSON.stringify(safeShell('git rev-parse --abbrev-ref HEAD', 'unknown')),
+      __KATS_BUILD_KIND__: JSON.stringify(isDev ? 'dev' : 'prod'),
+    },
+    server: {
+      port: DEV_PORT,
+      strictPort: true,
+      host: 'localhost',
+    },
+    build: {
+      outDir: 'dist',
+      emptyOutDir: true,
+      sourcemap: true,
+      rollupOptions: {
+        input: {
+          taskpane: resolve(here, 'taskpane.html'),
+          commands: resolve(here, 'commands.html'),
+        },
       },
     },
-  },
-}));
+  };
+});
