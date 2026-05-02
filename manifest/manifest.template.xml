@@ -5,7 +5,15 @@
   Build-time substitutions (handled by `scripts/build-manifest.mjs`):
     {{HOST_URL}}    https://<gh-user>.github.io/KATS-Addin/   (no trailing slash)
     {{VERSION}}     from package.json
-    {{GUID}}        from KATS_ADDIN_GUID env var, falling back to manifest/guid.txt
+    {{GUID}}        prod: from KATS_ADDIN_GUID env var, falling back to
+                    manifest/guid.txt. dev (--dev): manifest/guid.dev.txt.
+                    Different GUIDs are required so Office treats the dev
+                    sideload and the admin-deployed prod build as two
+                    distinct add-ins; otherwise they share cache state
+                    and you can't tell which one's loading what bundle.
+    {{NAME_SUFFIX}} prod: empty. dev: " (DEV)" — appended to display
+                    name + ribbon-tab label so the two coexisting menus
+                    are visually distinguishable in Word's UI.
 -->
 <OfficeApp xmlns="http://schemas.microsoft.com/office/appforoffice/1.1"
            xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
@@ -17,7 +25,7 @@
   <Version>{{VERSION}}</Version>
   <ProviderName>MGA Advokater</ProviderName>
   <DefaultLocale>sv-SE</DefaultLocale>
-  <DisplayName DefaultValue="KATS" />
+  <DisplayName DefaultValue="KATS{{NAME_SUFFIX}}" />
   <Description DefaultValue="Transformerar KATS-taggade Word-dokument." />
   <IconUrl DefaultValue="{{HOST_URL}}/assets/icon-64.png" />
   <HighResolutionIconUrl DefaultValue="{{HOST_URL}}/assets/icon-128.png" />
@@ -128,7 +136,7 @@
         <!-- Tab label "KATS" (not "MGA") — the legacy VBA .dotm template
              also defines an "MGA" tab; same-label tabs collide on Mac
              Word and the add-in tab gets suppressed. -->
-        <bt:String id="Kats.Tab.Label" DefaultValue="KATS" />
+        <bt:String id="Kats.Tab.Label" DefaultValue="KATS{{NAME_SUFFIX}}" />
         <bt:String id="Kats.Group.Label" DefaultValue="Verktyg" />
         <bt:String id="Kats.RunButton.Label" DefaultValue="Processa" />
         <bt:String id="Kats.RunButton.Title" DefaultValue="Processa KATS" />
