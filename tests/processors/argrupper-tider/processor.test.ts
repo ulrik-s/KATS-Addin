@@ -225,6 +225,72 @@ describe('computeArgrupper — English / drifted heading aliases', () => {
   });
 });
 
+describe('computeArgrupper — alias → Swedish label rewriting', () => {
+  // Cecilia's bug: matching English aliases worked, but the rendered
+  // doc kept the English text. These tests pin that the transform now
+  // emits col-0 patches that overwrite "Fee" → "Arvode", "Total" →
+  // "Summa", etc., so the final document is monolingual Swedish.
+  const ENGLISH_TABLE: readonly (readonly string[])[] = [
+    ['Datum', 'Beskrivning', 'Antal', 'Belopp'],
+    ['Fee', '', '', ''],
+    ['2026-04-20', 'x', '1.5', ''],
+    ['Total', '', '', ''],
+    ['Tidsspillan', '', '', ''], // already Swedish — should NOT be patched
+    ['2026-04-22', 'y', '0.5', ''],
+    ['Total', '', '', ''],
+  ];
+
+  it('rewrites the section heading from "Fee" to "Arvode"', () => {
+    const state = computeArgrupper({ read: makeReadFromRows(ENGLISH_TABLE), now: NOW });
+    expect(state.patches).toContainEqual({ row: 1, col: 0, paragraphs: ['Arvode'] });
+  });
+
+  it('rewrites both "Total" summary rows to "Summa"', () => {
+    const state = computeArgrupper({ read: makeReadFromRows(ENGLISH_TABLE), now: NOW });
+    expect(state.patches).toContainEqual({ row: 3, col: 0, paragraphs: ['Summa'] });
+    expect(state.patches).toContainEqual({ row: 6, col: 0, paragraphs: ['Summa'] });
+  });
+
+  it('leaves a canonical Swedish heading unpatched (no-op)', () => {
+    const state = computeArgrupper({ read: makeReadFromRows(ENGLISH_TABLE), now: NOW });
+    // Row 4 is the "Tidsspillan" heading — already canonical.
+    const tidsspillanRewrite = state.patches.find(
+      (p) => p.row === 4 && p.col === 0 && p.paragraphs.length > 0,
+    );
+    expect(tidsspillanRewrite).toBeUndefined();
+  });
+
+  it('leaves an uppercase Swedish heading unpatched (case-insensitive primary match)', () => {
+    const upper: readonly (readonly string[])[] = [
+      ['Datum', 'Beskr', 'Antal', 'Belopp'],
+      ['ARVODE', '', '', ''],
+      ['2026-04-20', 'x', '1', ''],
+      ['SUMMA', '', '', ''],
+    ];
+    const state = computeArgrupper({ read: makeReadFromRows(upper), now: NOW });
+    const headingRewrite = state.patches.find(
+      (p) => p.row === 1 && p.col === 0 && p.paragraphs.length > 0,
+    );
+    const summaryRewrite = state.patches.find(
+      (p) => p.row === 3 && p.col === 0 && p.paragraphs.length > 0,
+    );
+    expect(headingRewrite).toBeUndefined();
+    expect(summaryRewrite).toBeUndefined();
+  });
+
+  it('rewrites "Honorarium" alias to "Arvode" too', () => {
+    const honor: readonly (readonly string[])[] = [
+      ['Datum', 'Beskr', 'Antal', 'Belopp'],
+      ['Honorarium', '', '', ''],
+      ['2026-04-20', 'x', '1', ''],
+      ['Total', '', '', ''],
+    ];
+    const state = computeArgrupper({ read: makeReadFromRows(honor), now: NOW });
+    expect(state.patches).toContainEqual({ row: 1, col: 0, paragraphs: ['Arvode'] });
+    expect(state.patches).toContainEqual({ row: 3, col: 0, paragraphs: ['Summa'] });
+  });
+});
+
 describe('computeArgrupper — diagnostic warnings', () => {
   it('emits a warning when a recognized heading has no summary row anywhere after it', () => {
     const noSummary: readonly (readonly string[])[] = [

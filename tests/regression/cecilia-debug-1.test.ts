@@ -152,4 +152,38 @@ describe('cross-processor regression: Cecilia bug report 2026-05-02', () => {
     expect(flat).toContain('8 943,00 kr'); // 5.50 × 1626 = 8943
     expect(flat).toContain('744,00 kr'); // 0.50 × 1487 = 743.50 → per-row rounding lifts to 744
   });
+
+  it('writes Swedish back over English labels in ARGRUPPER + UTLÄGG tables', async () => {
+    // The user-visible follow-up bug: matching English aliases worked,
+    // but the rendered doc still showed "Fee" / "Total" / "Expenses".
+    // Now the post-render snapshot must be monolingual Swedish.
+    const registry = new MapProcessorRegistry();
+    registry.register(new UtlaggProcessor({ getCurrentUser: () => CECILIA }));
+    registry.register(new ArgrupperTiderProcessor({ now: () => NOW }));
+
+    const argrupperRange = table(CECILIA_ARGRUPPER);
+    const utlaggRange = table(CECILIA_UTLAGG);
+    const ctx = new KatsContext();
+    const discoveries: Discovery[] = [
+      { tag: tagName('KATS_UTLAGGSSPECIFIKATION'), range: utlaggRange },
+      { tag: tagName('KATS_ARGRUPPERTIDERDATUMANTALSUMMA'), range: argrupperRange },
+    ];
+    await runPipeline(discoveries, registry, ctx);
+
+    const argrupperFlat = argrupperRange.snapshot().flat(2).join('|');
+    expect(argrupperFlat).toContain('Arvode'); // rewritten from "Fee"
+    expect(argrupperFlat).toContain('Summa'); // rewritten from "Total"
+    expect(argrupperFlat).toContain('Tidsspillan'); // already Swedish, untouched
+    expect(argrupperFlat).not.toContain('Fee');
+    // "Total" appears as a substring of "totalt" etc; check the cell-exact form.
+    const argRows = argrupperRange.snapshot();
+    const cellTexts = argRows.map((r) => r.map((c) => c.join('\r')));
+    const exactTotalCells = cellTexts.flat().filter((t) => t.trim() === 'Total');
+    expect(exactTotalCells).toEqual([]);
+
+    const utlaggFlat = utlaggRange.snapshot().flat(2).join('|');
+    expect(utlaggFlat).toContain('Utlägg'); // rewritten from "Expenses"
+    expect(utlaggFlat).toContain('Summa'); // rewritten from "Total"
+    expect(utlaggFlat).not.toContain('Expenses');
+  });
 });

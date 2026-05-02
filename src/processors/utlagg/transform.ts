@@ -7,6 +7,7 @@ import {
 } from '../../domain/money.js';
 import {
   type LabelSpec,
+  canonicalLabelOrNull,
   labelPrimary,
   swedishLooseContains,
   swedishLooseEqualsAny,
@@ -97,6 +98,11 @@ interface ProcessSectionArgs {
 function processSection(args: ProcessSectionArgs): number {
   const headingRow = findHeadingRow(args.cells, args.section);
   if (headingRow < 0) return 0;
+
+  // Rewrite alias heading text back to canonical Swedish (e.g.
+  // "Expenses" → "Utlägg") so the rendered doc is monolingual.
+  pushLabelRewriteIfNeeded(args.cells, headingRow, args.section, args.patches);
+
   const summaryRow = findSummaryRowAfter(args.cells, headingRow);
   if (summaryRow < 0) {
     args.warnings.push(
@@ -105,6 +111,9 @@ function processSection(args: ProcessSectionArgs): number {
     );
     return 0;
   }
+
+  // Same for the summary row label ("Total" → "Summa").
+  pushLabelRewriteIfNeeded(args.cells, summaryRow, UTLAGG_SUMMARY_LABEL, args.patches);
 
   let totalKr = 0;
   for (let r = headingRow + 1; r < summaryRow; r += 1) {
@@ -151,6 +160,22 @@ function processSection(args: ProcessSectionArgs): number {
   });
 
   return roundHalfAwayFromZero(totalKr);
+}
+
+/**
+ * Append a col-0 patch rewriting an aliased label to its primary
+ * Swedish form. No-op when the cell already matches the primary
+ * (case- and diacritic-insensitively) or is empty.
+ */
+function pushLabelRewriteIfNeeded(
+  cells: readonly (readonly (readonly string[])[])[],
+  row: number,
+  spec: LabelSpec,
+  patches: CellPatch[],
+): void {
+  const canonical = canonicalLabelOrNull(cellText(cells, row, 0), spec);
+  if (canonical === null) return;
+  patches.push({ row, col: 0, paragraphs: [canonical] });
 }
 
 function cellText(

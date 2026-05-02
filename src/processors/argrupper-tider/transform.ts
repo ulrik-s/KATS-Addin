@@ -8,6 +8,7 @@ import { looksLikeIsoDate, parseIsoDate } from '../../domain/iso-date.js';
 import { formatSvDecimal, roundToDecimals, svToNumber } from '../../domain/money.js';
 import {
   type LabelSpec,
+  canonicalLabelOrNull,
   labelPrimary,
   swedishLooseContainsAny,
   swedishLooseEqualsAny,
@@ -154,6 +155,11 @@ function computeSectionHours(
 ): number {
   const headingRow = findHeadingRow(cells, section);
   if (headingRow < 0) return 0;
+
+  // Rewrite alias heading text back to canonical Swedish (e.g.
+  // "Fee" → "Arvode") so the rendered doc is monolingual.
+  pushLabelRewriteIfNeeded(cells, headingRow, section, patches);
+
   const summaryRow = findSummaryRowAfter(cells, headingRow);
   if (summaryRow < 0) {
     warnings.push(
@@ -162,6 +168,9 @@ function computeSectionHours(
     );
     return 0;
   }
+
+  // Same for the summary row label ("Total" → "Summa").
+  pushLabelRewriteIfNeeded(cells, summaryRow, ARGRUPPER_SUMMARY_LABEL, patches);
 
   let sum = 0;
   for (let r = headingRow + 1; r < summaryRow; r += 1) {
@@ -176,6 +185,22 @@ function computeSectionHours(
     paragraphs: [formatSvDecimal(rounded, HOURS_DECIMALS)],
   });
   return rounded;
+}
+
+/**
+ * Append a col-0 patch rewriting an aliased label to its primary
+ * Swedish form. No-op when the cell already matches the primary
+ * (case- and diacritic-insensitively) or is empty.
+ */
+function pushLabelRewriteIfNeeded(
+  cells: readonly (readonly (readonly string[])[])[],
+  row: number,
+  spec: LabelSpec,
+  patches: CellPatch[],
+): void {
+  const canonical = canonicalLabelOrNull(cellText(cells, row, 0), spec);
+  if (canonical === null) return;
+  patches.push({ row, col: 0, paragraphs: [canonical] });
 }
 
 function cellText(

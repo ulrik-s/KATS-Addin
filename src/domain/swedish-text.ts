@@ -117,3 +117,21 @@ export function swedishLooseEqualsAny(haystack: string, spec: LabelLike): boolea
 export function swedishLooseContainsAny(haystack: string, spec: LabelLike): boolean {
   return labelVariants(spec).some((v) => swedishLooseContains(haystack, v));
 }
+
+/**
+ * Decide whether `currentText` should be rewritten to the canonical
+ * Swedish form of `spec`. Returns the primary form when `currentText`
+ * looks like an alias (or some other drifted spelling) that doesn't
+ * loose-equal the primary; returns null when the text is already
+ * canonical (case- and diacritic-insensitively) or empty.
+ *
+ * Used by table processors to write Swedish back over English drafts:
+ * matching is forgiving, but the rendered document should always end up
+ * in canonical Swedish.
+ */
+export function canonicalLabelOrNull(currentText: string, spec: LabelSpec): string | null {
+  const trimmed = nfc(currentText).trim();
+  if (trimmed.length === 0) return null;
+  if (swedishLooseEquals(trimmed, spec.primary)) return null;
+  return spec.primary;
+}

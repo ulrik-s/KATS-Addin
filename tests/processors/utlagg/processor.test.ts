@@ -235,6 +235,81 @@ describe('UtlaggProcessor — English / drifted heading aliases', () => {
   });
 });
 
+describe('UtlaggProcessor — alias → Swedish label rewriting', () => {
+  // Same intent as argrupper: tolerate English on input, write Swedish
+  // back to the rendered doc so it ends up monolingual.
+  const ENGLISH_TABLE: readonly (readonly string[])[] = [
+    ['Datum', 'Beskrivning', 'Antal', 'á-pris', 'Belopp'],
+    ['Expenses', '', '', '', ''],
+    ['2026-04-30', 'Tolk', '1', '1597', ''],
+    ['Total', '', '', '', ''],
+  ];
+
+  function makeRead(rows: readonly (readonly string[])[]): UtlaggRead {
+    return {
+      cells: rows.map((row) => row.map((cell) => (cell.length === 0 ? [] : [cell]))),
+    };
+  }
+
+  it('rewrites the section heading from "Expenses" to "Utlägg"', () => {
+    const state = computeUtlagg({ read: makeRead(ENGLISH_TABLE), mileageKrPerKm: 25 });
+    expect(state.patches).toContainEqual({ row: 1, col: 0, paragraphs: ['Utlägg'] });
+  });
+
+  it('rewrites the "Total" summary row to "Summa"', () => {
+    const state = computeUtlagg({ read: makeRead(ENGLISH_TABLE), mileageKrPerKm: 25 });
+    expect(state.patches).toContainEqual({ row: 3, col: 0, paragraphs: ['Summa'] });
+  });
+
+  it('rewrites the VAT-free section heading to "Utlägg momsfri"', () => {
+    const variant: readonly (readonly string[])[] = [
+      ['Datum', 'Beskr', 'Antal', 'á', 'Belopp'],
+      ['VAT-free expenses', '', '', '', ''],
+      ['2026-04-01', 'Domstolsavgift', '1', '900', ''],
+      ['Total', '', '', '', ''],
+    ];
+    const state = computeUtlagg({ read: makeRead(variant), mileageKrPerKm: 25 });
+    expect(state.patches).toContainEqual({ row: 1, col: 0, paragraphs: ['Utlägg momsfri'] });
+    expect(state.patches).toContainEqual({ row: 3, col: 0, paragraphs: ['Summa'] });
+  });
+
+  it('leaves canonical Swedish labels unpatched', () => {
+    const swedish: readonly (readonly string[])[] = [
+      ['Datum', 'Beskr', 'Antal', 'á', 'Belopp'],
+      ['Utlägg', '', '', '', ''],
+      ['2026-04-01', 'x', '1', '500', ''],
+      ['Summa', '', '', '', ''],
+    ];
+    const state = computeUtlagg({ read: makeRead(swedish), mileageKrPerKm: 25 });
+    const headingRewrite = state.patches.find(
+      (p) => p.row === 1 && p.col === 0 && p.paragraphs.length > 0,
+    );
+    const summaryRewrite = state.patches.find(
+      (p) => p.row === 3 && p.col === 0 && p.paragraphs.length > 0,
+    );
+    expect(headingRewrite).toBeUndefined();
+    expect(summaryRewrite).toBeUndefined();
+  });
+
+  it('leaves uppercase Swedish labels unpatched (primary case-insensitive)', () => {
+    const upper: readonly (readonly string[])[] = [
+      ['Datum', 'Beskr', 'Antal', 'á', 'Belopp'],
+      ['UTLÄGG', '', '', '', ''],
+      ['2026-04-01', 'x', '1', '500', ''],
+      ['SUMMA', '', '', '', ''],
+    ];
+    const state = computeUtlagg({ read: makeRead(upper), mileageKrPerKm: 25 });
+    const headingRewrite = state.patches.find(
+      (p) => p.row === 1 && p.col === 0 && p.paragraphs.length > 0,
+    );
+    const summaryRewrite = state.patches.find(
+      (p) => p.row === 3 && p.col === 0 && p.paragraphs.length > 0,
+    );
+    expect(headingRewrite).toBeUndefined();
+    expect(summaryRewrite).toBeUndefined();
+  });
+});
+
 describe('UtlaggProcessor — diagnostic warnings', () => {
   function makeRead(rows: readonly (readonly string[])[]): UtlaggRead {
     return {

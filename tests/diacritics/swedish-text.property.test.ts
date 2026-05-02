@@ -9,6 +9,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   type LabelSpec,
+  canonicalLabelOrNull,
   labelPrimary,
   labelVariants,
   swedishLooseContains,
@@ -181,6 +182,49 @@ describe('LabelSpec helpers — alias-aware matching', () => {
 
   it('swedishLooseContainsAny falls through to plain swedishLooseContains for strings', () => {
     expect(swedishLooseContainsAny('Utlägg momsfri', 'Utlägg')).toBe(true);
+  });
+});
+
+describe('canonicalLabelOrNull — alias → primary rewriting', () => {
+  const ARVODE: LabelSpec = { primary: 'Arvode', aliases: ['Fee', 'Fees'] };
+  const SUMMARY: LabelSpec = { primary: 'Summa', aliases: ['Total', 'Sum'] };
+
+  it('returns primary form when text is an alias', () => {
+    expect(canonicalLabelOrNull('Fee', ARVODE)).toBe('Arvode');
+    expect(canonicalLabelOrNull('Fees', ARVODE)).toBe('Arvode');
+    expect(canonicalLabelOrNull('Total', SUMMARY)).toBe('Summa');
+  });
+
+  it('returns null when text already matches the primary (case-insensitive)', () => {
+    expect(canonicalLabelOrNull('Arvode', ARVODE)).toBeNull();
+    expect(canonicalLabelOrNull('ARVODE', ARVODE)).toBeNull();
+    expect(canonicalLabelOrNull('arvode', ARVODE)).toBeNull();
+    expect(canonicalLabelOrNull('  Arvode  ', ARVODE)).toBeNull();
+  });
+
+  it('returns null when text already matches primary diacritic-loose', () => {
+    const UTLAGG: LabelSpec = { primary: 'Utlägg', aliases: ['Expenses'] };
+    expect(canonicalLabelOrNull('Utlagg', UTLAGG)).toBeNull(); // diacritic stripped
+    expect(canonicalLabelOrNull('Utlägg', UTLAGG)).toBeNull();
+  });
+
+  it('returns null for empty / whitespace-only text', () => {
+    expect(canonicalLabelOrNull('', ARVODE)).toBeNull();
+    expect(canonicalLabelOrNull('   ', ARVODE)).toBeNull();
+    expect(canonicalLabelOrNull('\t\n', ARVODE)).toBeNull();
+  });
+
+  it('returns primary even when alias is matched case-insensitively', () => {
+    expect(canonicalLabelOrNull('FEE', ARVODE)).toBe('Arvode');
+    expect(canonicalLabelOrNull('total', SUMMARY)).toBe('Summa');
+  });
+
+  it('returns null when text matches no variant at all (caller should not patch)', () => {
+    expect(canonicalLabelOrNull('something else', ARVODE)).toBe('Arvode');
+    // ^ NOTE: canonicalLabelOrNull rewrites *anything* that doesn't loose-equal
+    // the primary. Callers are expected to first establish the row IS a label
+    // row (via findHeadingRow / findSummaryRowAfter) before calling, so the
+    // input is always either primary, alias, or canonical-with-noise.
   });
 });
 
