@@ -38,9 +38,27 @@ describe('svToNumber — Swedish/English number parser', () => {
     expect(svToNumber('1-234')).toBe(1234);
   });
 
-  it('drops second/third decimal separators', () => {
-    expect(svToNumber('1.234.56')).toBe(1.23456);
-    expect(svToNumber('1,234,56')).toBe(1.23456);
+  it('treats the last separator as decimal, earlier as thousands', () => {
+    // English-formatted money: "1,597.00 kr" — comma is thousands, dot
+    // is decimal. Pre-fix this read as 1.597 (first separator = decimal),
+    // which broke "Belopp exkl. moms" when an ARVODE table had
+    // English-formatted utlägg.
+    expect(svToNumber('1,597.00')).toBe(1597);
+    expect(svToNumber('1,597.00 kr')).toBe(1597);
+    expect(svToNumber('1,000,000.50')).toBe(1000000.5);
+    // Swedish-formatted with explicit period thousands: "1.500,75" → 1500.75.
+    expect(svToNumber('1.500,75')).toBe(1500.75);
+    // Repeated same-type separators get treated as thousands except the last.
+    expect(svToNumber('1.234.56')).toBe(1234.56);
+    expect(svToNumber('1,234,56')).toBe(1234.56);
+  });
+
+  it('keeps single-separator inputs as decimal (legacy / unambiguous)', () => {
+    // Only one separator type → assume decimal. Cannot distinguish
+    // Swedish 1.5 from English 1500 without context.
+    expect(svToNumber('1,500')).toBe(1.5);
+    expect(svToNumber('1.500')).toBe(1.5);
+    expect(svToNumber('850,50')).toBe(850.5);
   });
 
   it('returns 0 for empty / unparseable', () => {

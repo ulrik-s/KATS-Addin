@@ -274,7 +274,7 @@ describe('computeArvode — per-category rate override', () => {
   const FIRM_RATES = {
     arvode: 1626,
     arvodeHelg: 3256,
-    tidsspillan: 1587,
+    tidsspillan: 1487,
     tidsspillanOvrigTid: 975,
   };
 
@@ -298,10 +298,10 @@ describe('computeArvode — per-category rate override', () => {
     const tidsOvrigAmt = state.patches.find((p) => p.row === 4 && p.col === 2);
     expect(arvodeAmt?.paragraphs).toEqual(['3 252,00 kr']); // 2 × 1626
     expect(helgAmt?.paragraphs).toEqual(['3 256,00 kr']); // 1 × 3256
-    expect(tidsAmt?.paragraphs).toEqual(['1 587,00 kr']); // 1 × 1587
+    expect(tidsAmt?.paragraphs).toEqual(['1 487,00 kr']); // 1 × 1487
     expect(tidsOvrigAmt?.paragraphs).toEqual(['975,00 kr']); // 1 × 975
-    // Total = 3252 + 3256 + 1587 + 975 + 550 utlägg = 9620
-    expect(state.totalExMomsKr).toBe(9620);
+    // Total = 3252 + 3256 + 1487 + 975 + 550 utlägg = 9520
+    expect(state.totalExMomsKr).toBe(9520);
   });
 
   it('rewrites the spec column with the per-category rate', () => {

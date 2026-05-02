@@ -153,6 +153,38 @@ describe('cross-processor regression: Cecilia bug report 2026-05-02', () => {
     expect(flat).toContain('744,00 kr'); // 0.50 × 1487 = 743.50 → per-row rounding lifts to 744
   });
 
+  it('parses English-formatted utlägg amount "1,597.00 kr" correctly (last separator wins)', async () => {
+    // The ARVODE-table's UTLÄGG row in Cecilia's actual doc was
+    // manually filled by her with " 1,597.00 kr" (English format with
+    // comma-thousands and dot-decimal). Pre-fix svToNumber treated the
+    // first separator as decimal, parsing it as 1.597 → "Belopp exkl.
+    // moms" came out 1595 kr too low.
+    const registry = new MapProcessorRegistry();
+    registry.register(new UtlaggProcessor({ getCurrentUser: () => CECILIA }));
+    registry.register(new ArgrupperTiderProcessor({ now: () => NOW }));
+    registry.register(new ArvodeProcessor());
+
+    const ARVODE_WITH_ENGLISH_UTLAGG: readonly (readonly [string, string, string])[] = [
+      ['', '', ''],
+      ['ARVODE', ' á 1626 kr', ' kr'],
+      ['ARVODE HELG', ' á 3256 kr', ' kr'],
+      ['TIDSSPILLAN', ' á 1487 kr', ' kr'],
+      ['TIDSSPILLAN ÖVRIG TID', ' á 975 kr', ' kr'],
+      ['UTLÄGG', '1.00', ' 1,597.00 kr'], // ← Cecilia's manually-entered English format
+    ];
+
+    const ctx = new KatsContext();
+    const discoveries: Discovery[] = [
+      { tag: tagName('KATS_UTLAGGSSPECIFIKATION'), range: table(CECILIA_UTLAGG) },
+      { tag: tagName('KATS_ARGRUPPERTIDERDATUMANTALSUMMA'), range: table(CECILIA_ARGRUPPER) },
+      { tag: tagName('KATS_ARVODE'), range: table(ARVODE_WITH_ENGLISH_UTLAGG) },
+    ];
+    await runPipeline(discoveries, registry, ctx);
+
+    // Total ex moms = 5.50 × 1626 + 0.50 × 1487 + 1597 = 8943 + 744 + 1597 = 11284.
+    expect(getArvodeExMomsFromContext(ctx)).toBe(8943 + 744 + 1597);
+  });
+
   it('writes Swedish back over English labels in ARGRUPPER + UTLÄGG tables', async () => {
     // The user-visible follow-up bug: matching English aliases worked,
     // but the rendered doc still showed "Fee" / "Total" / "Expenses".

@@ -10,32 +10,57 @@
  *   - decimal separator:   U+002C (comma)
  *   - currency suffix:     " kr"
  *
- * Input parsing accepts BOTH "1 234,56" and "1234.56" — `,` and `.` are
- * interchangeable as decimal separator (first one wins, subsequent
- * occurrences are dropped, matching VBA `SvToCurrency`).
+ * Input parsing accepts both Swedish ("1 234,56") and English
+ * ("1,234.56") number formats. When both `,` and `.` appear, the LAST
+ * occurrence is taken as the decimal separator and the other-type
+ * separators get treated as thousands grouping. With only one
+ * separator type, it is treated as the decimal separator.
  */
 
 /**
  * Parse a Swedish-or-English-style number from free-form cell text.
- * Strips everything that isn't a digit, a leading minus, or the first
+ * Strips everything that isn't a digit, a leading minus, or a
  * decimal separator. Empty / unparseable input → 0.
+ *
+ * Mixed-separator strings ("1,597.00" English / "1.597,50" Swedish):
+ * the LAST `,` or `.` in the string is taken as the decimal separator;
+ * any earlier `,` / `.` are treated as thousands separators and dropped.
+ * Strings with only one separator type ("1,500" or "1.500") fall back
+ * to legacy "single separator = decimal" behavior — there's no way to
+ * disambiguate Swedish 1.5 from English 1500 without more context.
  */
 export function svToNumber(raw: string): number {
   const s = raw.trim();
   if (s.length === 0) return 0;
 
+  // Find which separator (if any) acts as the decimal point: when both
+  // `,` and `.` appear, the last occurrence wins. When only one type
+  // appears, it is the decimal.
+  const lastComma = s.lastIndexOf(',');
+  const lastDot = s.lastIndexOf('.');
+  const hasComma = lastComma !== -1;
+  const hasDot = lastDot !== -1;
+  const decimalIndex =
+    hasComma && hasDot
+      ? Math.max(lastComma, lastDot)
+      : hasComma
+        ? lastComma
+        : hasDot
+          ? lastDot
+          : -1;
+
   let out = '';
-  let sawDecimal = false;
   for (let i = 0; i < s.length; i += 1) {
     const ch = s.charAt(i);
     if (ch === '-' && out.length === 0) {
       out += '-';
     } else if (ch >= '0' && ch <= '9') {
       out += ch;
-    } else if ((ch === ',' || ch === '.') && !sawDecimal) {
+    } else if ((ch === ',' || ch === '.') && i === decimalIndex) {
       out += '.';
-      sawDecimal = true;
     }
+    // Any other separator occurrence (other-type or earlier same-type)
+    // is treated as a thousands separator and dropped.
   }
 
   if (out === '' || out === '-' || out === '.' || out === '-.') return 0;
