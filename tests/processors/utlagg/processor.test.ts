@@ -7,6 +7,7 @@ import { type KatsUser } from '../../../src/domain/user-db.js';
 import { FakeTextKatsRange } from '../../../src/io/fake-kats-range.js';
 import { FakeTableKatsRange } from '../../../src/io/fake-kats-table.js';
 import {
+  UTLAGG_COL,
   UtlaggProcessor,
   computeUtlagg,
   getUtlaggTotalsFromContext,
@@ -186,6 +187,175 @@ describe('UtlaggProcessor — transform (computeUtlagg pure logic)', () => {
     };
     const state = computeUtlagg({ read, mileageKrPerKm: 25 });
     expect(state.totalExMomsKr).toBe(100);
+  });
+});
+
+describe('UtlaggProcessor — English / drifted heading aliases', () => {
+  // Cecilia's bug-report doc shape: "Expenses" + "Total" instead of
+  // "Utlägg" + "Summa". Should still compute the section total.
+  const ENGLISH_TABLE: readonly (readonly string[])[] = [
+    ['Datum', 'Beskrivning', 'Antal', 'á-pris', 'Belopp'],
+    ['Expenses', '', '', '', ''],
+    ['2026-04-30', 'Tolk', '1', '1597', ''],
+    ['Total', '', '', '', ''],
+  ];
+
+  function makeRead(rows: readonly (readonly string[])[]): UtlaggRead {
+    return {
+      cells: rows.map((row) => row.map((cell) => (cell.length === 0 ? [] : [cell]))),
+    };
+  }
+
+  it('matches "Expenses" as Utlägg and "Total" as Summa', () => {
+    const state = computeUtlagg({ read: makeRead(ENGLISH_TABLE), mileageKrPerKm: 25 });
+    expect(state.totalExMomsKr).toBe(1597);
+    expect(state.warnings).toEqual([]);
+  });
+
+  it('matches the "Disbursements" alias for Utlägg', () => {
+    const variant: readonly (readonly string[])[] = [
+      ['Datum', 'Beskr', 'Antal', 'á', 'Belopp'],
+      ['Disbursements', '', '', '', ''],
+      ['2026-04-01', 'Tolk', '1', '500', ''],
+      ['Sum', '', '', '', ''],
+    ];
+    const state = computeUtlagg({ read: makeRead(variant), mileageKrPerKm: 25 });
+    expect(state.totalExMomsKr).toBe(500);
+  });
+
+  it('matches the "VAT-free expenses" alias for Utlägg momsfri', () => {
+    const variant: readonly (readonly string[])[] = [
+      ['Datum', 'Beskr', 'Antal', 'á', 'Belopp'],
+      ['VAT-free expenses', '', '', '', ''],
+      ['2026-04-01', 'Domstolsavgift', '1', '900', ''],
+      ['Total', '', '', '', ''],
+    ];
+    const state = computeUtlagg({ read: makeRead(variant), mileageKrPerKm: 25 });
+    expect(state.totalEjMomsKr).toBe(900);
+  });
+});
+
+describe('UtlaggProcessor — diagnostic warnings', () => {
+  function makeRead(rows: readonly (readonly string[])[]): UtlaggRead {
+    return {
+      cells: rows.map((row) => row.map((cell) => (cell.length === 0 ? [] : [cell]))),
+    };
+  }
+
+  it('warns when a recognized heading has no summary row', () => {
+    const noSummary: readonly (readonly string[])[] = [
+      ['Datum', 'Beskr', 'Antal', 'á', 'Belopp'],
+      ['Utlägg', '', '', '', ''],
+      ['2026-04-01', 'x', '1', '500', ''],
+      // missing Summa row
+    ];
+    const state = computeUtlagg({ read: makeRead(noSummary), mileageKrPerKm: 25 });
+    expect(state.totalExMomsKr).toBe(0);
+    expect(state.warnings.some((w) => w.includes('summaraden'))).toBe(true);
+    expect(state.warnings.some((w) => w.includes('Utlägg'))).toBe(true);
+  });
+
+  it('warns when data rows exist but no recognized section heading is found', () => {
+    const drifted: readonly (readonly string[])[] = [
+      ['Datum', 'Beskr', 'Antal', 'á', 'Belopp'],
+      ['Övrigt', '', '', '', ''], // not a recognized section
+      ['2026-04-01', 'x', '1', '500', ''],
+      ['Summa', '', '', '', ''],
+    ];
+    const state = computeUtlagg({ read: makeRead(drifted), mileageKrPerKm: 25 });
+    expect(state.totalExMomsKr).toBe(0);
+    expect(state.totalEjMomsKr).toBe(0);
+    expect(state.warnings.some((w) => w.includes('ingen sektionsrubrik hittades'))).toBe(true);
+  });
+
+  it('does NOT warn when the table is genuinely empty', () => {
+    const empty: readonly (readonly string[])[] = [['Datum', 'Beskr', 'Antal', 'á', 'Belopp']];
+    const state = computeUtlagg({ read: makeRead(empty), mileageKrPerKm: 25 });
+    expect(state.warnings).toEqual([]);
+  });
+
+  it('does NOT warn when only the optional VAT-free section is absent', () => {
+    const onlyVat: readonly (readonly string[])[] = [
+      ['Datum', 'Beskr', 'Antal', 'á', 'Belopp'],
+      ['Utlägg', '', '', '', ''],
+      ['2026-04-01', 'x', '1', '500', ''],
+      ['Summa', '', '', '', ''],
+    ];
+    const state = computeUtlagg({ read: makeRead(onlyVat), mileageKrPerKm: 25 });
+    expect(state.warnings).toEqual([]);
+  });
+
+  it('processor.transform copies state warnings into ctx.warnings', async () => {
+    const drifted: readonly (readonly string[])[] = [
+      ['Datum', 'Beskr', 'Antal', 'á', 'Belopp'],
+      ['Övrigt', '', '', '', ''],
+      ['2026-04-01', 'x', '1', '500', ''],
+      ['Summa', '', '', '', ''],
+    ];
+    const range = new FakeTableKatsRange(
+      drifted.map((row) => row.map((cell) => (cell.length === 0 ? [] : [cell]))),
+    );
+    const p = makeProcessor();
+    const ctx = new KatsContext();
+    await p.read(range, ctx);
+    p.transform(ctx);
+    expect(ctx.warnings.length).toBeGreaterThan(0);
+    expect(ctx.warnings).toEqual(requireUtlaggState(ctx).warnings);
+  });
+});
+
+describe('regression: Cecilia bug report 2026-05-02 (KATS-Debug-1.docx)', () => {
+  // Verbatim shape of Cecilia's utlägg table: "Expenses" heading,
+  // English-language "Total" summary, period decimal, mixed comma in
+  // amount column. Pre-fix this returned totalExMomsKr = 0.
+  const CECILIA_TABLE: readonly (readonly string[])[] = [
+    ['Expenses', '', '', '', ''], // gridSpan-5 in the doc; equivalent here
+    ['2026-04-30', 'Tolk 28/4-26', '1.00', '1597', ''],
+    ['Total', '', '', '', ''],
+  ];
+
+  function makeRead(rows: readonly (readonly string[])[]): UtlaggRead {
+    return {
+      cells: rows.map((row) => row.map((cell) => (cell.length === 0 ? [] : [cell]))),
+    };
+  }
+
+  it("computes totalExMomsKr = 1597 from Cecilia's English-labelled section", () => {
+    const state = computeUtlagg({ read: makeRead(CECILIA_TABLE), mileageKrPerKm: 25 });
+    expect(state.totalExMomsKr).toBe(1597);
+  });
+
+  it('emits no warnings for a fully-tolerated English template', () => {
+    const state = computeUtlagg({ read: makeRead(CECILIA_TABLE), mileageKrPerKm: 25 });
+    expect(state.warnings).toEqual([]);
+  });
+
+  it('writes the computed amount + Swedish-formatted summary back to the right cells', () => {
+    const state = computeUtlagg({ read: makeRead(CECILIA_TABLE), mileageKrPerKm: 25 });
+    const dataRow = 1;
+    const summaryRow = 2;
+    expect(state.patches).toContainEqual({
+      row: dataRow,
+      col: UTLAGG_COL.amount,
+      paragraphs: ['1 597'],
+    });
+    expect(state.patches).toContainEqual({
+      row: summaryRow,
+      col: UTLAGG_COL.amount,
+      paragraphs: ['1 597'],
+    });
+  });
+
+  it('end-to-end pipeline: UTLAGG state surfaces totals for downstream ARVODE_TOTAL', async () => {
+    const p = makeProcessor();
+    const registry = new MapProcessorRegistry();
+    registry.register(p);
+    const ctx = new KatsContext();
+    const range = table5(CECILIA_TABLE);
+    const discoveries: Discovery[] = [{ tag: tagName('KATS_UTLAGGSSPECIFIKATION'), range }];
+    await runPipeline(discoveries, registry, ctx);
+    expect(getUtlaggTotalsFromContext(ctx)).toEqual({ exMomsKr: 1597, ejMomsKr: 0 });
+    expect(ctx.warnings).toEqual([]);
   });
 });
 

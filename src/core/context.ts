@@ -16,6 +16,7 @@ import { type TagName } from './processor.js';
 export class KatsContext {
   private readonly _slots = new Map<string, unknown>();
   private readonly _tags = new Set<TagName>();
+  private readonly _warnings: string[] = [];
 
   /** Register that a tag was discovered in the document. */
   addTag(tag: TagName): void {
@@ -30,6 +31,29 @@ export class KatsContext {
   /** Read-only view of all tags discovered in this run. */
   get tags(): ReadonlySet<TagName> {
     return this._tags;
+  }
+
+  /**
+   * Push a user-facing diagnostic message. Processors emit these from
+   * their transform phase when they detect template drift that they were
+   * able to recover from silently (e.g. a heading missing entirely) so
+   * the orchestrator can surface them in the task pane. Duplicates are
+   * suppressed to avoid spam when a processor runs twice.
+   */
+  addWarning(message: string): void {
+    if (message.length === 0) return;
+    if (this._warnings.includes(message)) return;
+    this._warnings.push(message);
+  }
+
+  /** Push many warnings at once; same dedup semantics as addWarning. */
+  addWarnings(messages: Iterable<string>): void {
+    for (const m of messages) this.addWarning(m);
+  }
+
+  /** Read-only snapshot of all warnings collected during the run. */
+  get warnings(): readonly string[] {
+    return [...this._warnings];
   }
 
   /** Set a slot. Value is validated against the schema before storing. */

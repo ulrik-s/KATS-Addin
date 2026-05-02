@@ -54,6 +54,7 @@ export class UtlaggProcessor implements Processor {
     const user = this.deps.getCurrentUser();
     const state = computeUtlagg({ read, mileageKrPerKm: user.mileageKrPerKm });
     setUtlaggState(ctx, state);
+    ctx.addWarnings(state.warnings);
   }
 
   async render(range: KatsRange, ctx: KatsContext): Promise<void> {

@@ -354,6 +354,7 @@ describe('ArvodeProcessor — pipeline integration', () => {
       hours: { ...ZERO_HOURS, arvode: 2 },
       isTaxemal: false,
       patches: [],
+      warnings: [],
     });
 
     const range = arvodeTable(STD_TABLE);
@@ -377,6 +378,7 @@ describe('ArvodeProcessor — pipeline integration', () => {
       hearingStart: new Date(2026, 3, 25, 9, 0),
       hearingMinutes: 75,
       patches: [],
+      warnings: [],
     });
 
     const range = arvodeTable(STD_TABLE);

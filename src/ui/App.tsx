@@ -70,7 +70,7 @@ export function App(): JSX.Element {
     setStatus({ kind: 'busy', message: 'Processar dokumentet…' });
     try {
       const result = await runOnActiveDocument();
-      const { tagsProcessed, skippedTags } = result;
+      const { tagsProcessed, skippedTags, warnings } = result;
       const lines: string[] = [];
       if (tagsProcessed > 0) {
         lines.push(`Klar — ${String(tagsProcessed)} tagg(ar) processade.`);
@@ -83,10 +83,10 @@ export function App(): JSX.Element {
             `(markörer borttagna): ${skippedTags.join(', ')}.`,
         );
       }
-      setStatus({
-        kind: tagsProcessed > 0 ? 'success' : 'info',
-        message: lines.join('\n'),
-      });
+      for (const w of warnings) lines.push(`Varning: ${w}`);
+      const kind: StatusState['kind'] =
+        warnings.length > 0 ? 'error' : tagsProcessed > 0 ? 'success' : 'info';
+      setStatus({ kind, message: lines.join('\n') });
     } catch (cause) {
       const message = formatError(cause);
       setStatus({ kind: 'error', message: `Misslyckades: ${message}` });

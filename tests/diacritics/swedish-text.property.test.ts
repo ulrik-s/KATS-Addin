@@ -8,8 +8,13 @@
  */
 import { describe, it, expect } from 'vitest';
 import {
+  type LabelSpec,
+  labelPrimary,
+  labelVariants,
   swedishLooseContains,
+  swedishLooseContainsAny,
   swedishLooseEquals,
+  swedishLooseEqualsAny,
   normalizeKey,
   nfc,
 } from '../../src/domain/swedish-text.js';
@@ -114,6 +119,69 @@ describe('diacritics — dedup key stability (party-name style)', () => {
       expect(unique.size).toBe(1);
     });
   }
+});
+
+describe('LabelSpec helpers — alias-aware matching', () => {
+  const ARVODE_SPEC: LabelSpec = { primary: 'Arvode', aliases: ['Fee', 'Honorarium'] };
+  const SUMMARY_SPEC: LabelSpec = { primary: 'Summa', aliases: ['Total', 'Sum'] };
+
+  it('labelVariants(string) returns single-element list', () => {
+    expect(labelVariants('Arvode')).toEqual(['Arvode']);
+  });
+
+  it('labelVariants(spec) returns primary first, then aliases', () => {
+    expect(labelVariants(ARVODE_SPEC)).toEqual(['Arvode', 'Fee', 'Honorarium']);
+  });
+
+  it('labelVariants tolerates omitted aliases', () => {
+    expect(labelVariants({ primary: 'X' })).toEqual(['X']);
+  });
+
+  it('labelPrimary returns the primary form regardless of input shape', () => {
+    expect(labelPrimary('Arvode')).toBe('Arvode');
+    expect(labelPrimary(ARVODE_SPEC)).toBe('Arvode');
+    expect(labelPrimary({ primary: 'Y' })).toBe('Y');
+  });
+
+  it('swedishLooseEqualsAny matches the primary form', () => {
+    expect(swedishLooseEqualsAny('Arvode', ARVODE_SPEC)).toBe(true);
+  });
+
+  it('swedishLooseEqualsAny matches each alias', () => {
+    expect(swedishLooseEqualsAny('Fee', ARVODE_SPEC)).toBe(true);
+    expect(swedishLooseEqualsAny('Honorarium', ARVODE_SPEC)).toBe(true);
+  });
+
+  it('swedishLooseEqualsAny matches case- and diacritic-insensitively across aliases', () => {
+    const SECT: LabelSpec = { primary: 'Tidsspillan', aliases: ['Time loss'] };
+    expect(swedishLooseEqualsAny('TIDSSPILLAN', SECT)).toBe(true);
+    expect(swedishLooseEqualsAny('time loss', SECT)).toBe(true);
+    expect(swedishLooseEqualsAny('  Time  Loss  ', SECT)).toBe(false); // double-space middle
+  });
+
+  it('swedishLooseEqualsAny tolerates leading/trailing whitespace via the underlying matcher', () => {
+    expect(swedishLooseEqualsAny('  Total  ', SUMMARY_SPEC)).toBe(true);
+  });
+
+  it('swedishLooseEqualsAny returns false when no variant matches', () => {
+    expect(swedishLooseEqualsAny('Belopp', ARVODE_SPEC)).toBe(false);
+  });
+
+  it('swedishLooseEqualsAny accepts a bare string spec (legacy)', () => {
+    expect(swedishLooseEqualsAny('Arvode', 'Arvode')).toBe(true);
+    expect(swedishLooseEqualsAny('Fee', 'Arvode')).toBe(false);
+  });
+
+  it('swedishLooseContainsAny matches when any variant is contained', () => {
+    const ARENDE: LabelSpec = { primary: 'Ärende, total', aliases: ['Case, total'] };
+    expect(swedishLooseContainsAny('Ärende, total: 6,00 tim', ARENDE)).toBe(true);
+    expect(swedishLooseContainsAny('Final: Case, total — 6.00 h', ARENDE)).toBe(true);
+    expect(swedishLooseContainsAny('Belopp', ARENDE)).toBe(false);
+  });
+
+  it('swedishLooseContainsAny falls through to plain swedishLooseContains for strings', () => {
+    expect(swedishLooseContainsAny('Utlägg momsfri', 'Utlägg')).toBe(true);
+  });
 });
 
 describe('diacritics — output must always be NFC', () => {

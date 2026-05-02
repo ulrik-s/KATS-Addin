@@ -5,11 +5,17 @@ import {
   roundHalfAwayFromZero,
   svToNumber,
 } from '../../domain/money.js';
-import { swedishLooseContains, swedishLooseEquals } from '../../domain/swedish-text.js';
+import {
+  type LabelSpec,
+  labelPrimary,
+  swedishLooseContains,
+  swedishLooseEqualsAny,
+} from '../../domain/swedish-text.js';
 import {
   UTLAGG_COL,
   UTLAGG_SECTION_NO_VAT,
   UTLAGG_SECTION_VAT,
+  UTLAGG_SUMMARY_LABEL,
   type CellPatch,
   type UtlaggRead,
   type UtlaggState,
@@ -23,6 +29,10 @@ import {
  * Mirrors VBA `ProcessExpenseSection` for both sections. The VBA-era
  * "summa" row clearing and per-row amount recalculation live here as
  * pure logic on the snapshot — render just writes.
+ *
+ * Heading and summary labels are matched via `swedishLooseEqualsAny`,
+ * so English/translated drafts are accepted. When even the tolerant
+ * matcher comes up empty, a warning is pushed to `state.warnings`.
  */
 export interface ComputeUtlaggInput {
   readonly read: UtlaggRead;
@@ -33,43 +43,68 @@ export interface ComputeUtlaggInput {
 export function computeUtlagg(input: ComputeUtlaggInput): UtlaggState {
   const cells = input.read.cells;
   const patches: CellPatch[] = [];
+  const warnings: string[] = [];
 
   const vat = processSection({
     cells,
-    sectionLabel: UTLAGG_SECTION_VAT,
+    section: UTLAGG_SECTION_VAT,
     applyMileage: true,
     mileageKrPerKm: input.mileageKrPerKm,
     patches,
+    warnings,
   });
   const noVat = processSection({
     cells,
-    sectionLabel: UTLAGG_SECTION_NO_VAT,
+    section: UTLAGG_SECTION_NO_VAT,
     applyMileage: false,
     mileageKrPerKm: input.mileageKrPerKm,
     patches,
+    warnings,
   });
+
+  // Sanity check: data rows present but no section recognized at all.
+  if (
+    vat === 0 &&
+    noVat === 0 &&
+    findHeadingRow(cells, UTLAGG_SECTION_VAT) < 0 &&
+    findHeadingRow(cells, UTLAGG_SECTION_NO_VAT) < 0 &&
+    hasDataRows(cells)
+  ) {
+    warnings.push(
+      'UTLÄGG-tabellen ser ut att innehålla data men ingen sektionsrubrik hittades — ' +
+        `kontrollera att rubriken heter "${labelPrimary(UTLAGG_SECTION_VAT)}".`,
+    );
+  }
 
   return {
     patches,
     totalExMomsKr: vat,
     totalEjMomsKr: noVat,
+    warnings,
   };
 }
 
 interface ProcessSectionArgs {
   readonly cells: readonly (readonly (readonly string[])[])[];
-  readonly sectionLabel: string;
+  readonly section: LabelSpec;
   readonly applyMileage: boolean;
   readonly mileageKrPerKm: number;
   readonly patches: CellPatch[];
+  readonly warnings: string[];
 }
 
 /** Returns the section's total in kronor (rounded to whole kr). */
 function processSection(args: ProcessSectionArgs): number {
-  const headingRow = findSectionHeadingRow(args.cells, args.sectionLabel);
+  const headingRow = findHeadingRow(args.cells, args.section);
   if (headingRow < 0) return 0;
   const summaryRow = findSummaryRowAfter(args.cells, headingRow);
-  if (summaryRow < 0) return 0;
+  if (summaryRow < 0) {
+    args.warnings.push(
+      `UTLÄGG: rubriken "${labelPrimary(args.section)}" hittades men summaraden ` +
+        `("${labelPrimary(UTLAGG_SUMMARY_LABEL)}") saknas — sektionen ignorerades.`,
+    );
+    return 0;
+  }
 
   let totalKr = 0;
   for (let r = headingRow + 1; r < summaryRow; r += 1) {
@@ -127,33 +162,41 @@ function cellText(
 }
 
 /**
- * Find the row whose first non-empty cell loose-equals `label` and where
- * every other non-empty cell on the row matches the same. VBA parity:
- * a heading is a row with exactly one piece of meaningful content.
+ * Find the row whose first non-empty cell loose-equals any variant of
+ * `section` and where every other non-empty cell on the row matches the
+ * same. VBA parity: a heading is a row with exactly one piece of
+ * meaningful content.
  */
-function findSectionHeadingRow(
+function findHeadingRow(
   cells: readonly (readonly (readonly string[])[])[],
-  label: string,
+  section: LabelSpec,
 ): number {
   for (let r = 0; r < cells.length; r += 1) {
     const row = cells[r];
     if (!row) continue;
     const nonEmptyTexts = row.map((cell) => cell.join('\r').trim()).filter((t) => t.length > 0);
     if (nonEmptyTexts.length === 0) continue;
-    const allMatch = nonEmptyTexts.every((t) => swedishLooseEquals(t, label));
+    const allMatch = nonEmptyTexts.every((t) => swedishLooseEqualsAny(t, section));
     if (allMatch) return r;
   }
   return -1;
 }
 
-/** Find the first row after `headingRow` where col 0 (trimmed) loose-equals "Summa". */
+/** Find the first row after `headingRow` where col 0 (trimmed) matches the summary spec. */
 function findSummaryRowAfter(
   cells: readonly (readonly (readonly string[])[])[],
   headingRow: number,
 ): number {
   for (let r = headingRow + 1; r < cells.length; r += 1) {
     const text = cellText(cells, r, 0).trim();
-    if (swedishLooseEquals(text, 'Summa')) return r;
+    if (swedishLooseEqualsAny(text, UTLAGG_SUMMARY_LABEL)) return r;
   }
   return -1;
+}
+
+function hasDataRows(cells: readonly (readonly (readonly string[])[])[]): boolean {
+  for (let r = 0; r < cells.length; r += 1) {
+    if (looksLikeIsoDate(cellText(cells, r, UTLAGG_COL.date))) return true;
+  }
+  return false;
 }
