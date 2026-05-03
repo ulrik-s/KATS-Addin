@@ -7,6 +7,7 @@ import {
   getHearingMinutesFromContext,
   shouldUseTaxaFromContext,
 } from '../argrupper-tider/state.js';
+import { getUtlaggTotalsFromContext } from '../utlagg/state.js';
 import { ARVODE_ROW } from './schema.js';
 import { requireArvodeRead, requireArvodeState, setArvodeRead, setArvodeState } from './state.js';
 import { computeArvode } from './transform.js';
@@ -87,6 +88,10 @@ export class ArvodeProcessor implements Processor {
     };
     const roundingMode = this.deps.getRoundingMode();
     const rates = this.deps.getCategoryRatesKr();
+    // Authoritative utlägg amount comes from the upstream UTLAGG
+    // processor — the ARVODE table's UTLÄGG row should reflect that
+    // sum, not whatever the user typed there.
+    const utlaggExMomsKr = getUtlaggTotalsFromContext(ctx)?.exMomsKr;
     setArvodeState(
       ctx,
       computeArvode({
@@ -96,6 +101,7 @@ export class ArvodeProcessor implements Processor {
         hours,
         roundingMode,
         ...(rates !== undefined ? { categoryRatesKr: rates } : {}),
+        ...(utlaggExMomsKr !== undefined ? { utlaggExMomsKr } : {}),
       }),
     );
   }

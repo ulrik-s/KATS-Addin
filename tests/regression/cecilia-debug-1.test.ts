@@ -115,13 +115,15 @@ describe('cross-processor regression: Cecilia bug report 2026-05-02', () => {
     const arvodeTotal = getArvodeExMomsFromContext(ctx);
     expect(arvodeTotal).toBeGreaterThan(0);
 
-    // Sanity-check the math: 5.50 × 1626 + 0.50 × 1487, per-row rounding
-    // (legacy/court default) → whole kronor per row. Cecilia's ARVODE
-    // table's UTLÄGG row is empty in the read snapshot (in production
-    // it gets pre-filled separately), so it contributes 0 here.
+    // Sanity-check the math: 5.50 × 1626 + 0.50 × 1487 + 1597 utlägg,
+    // per-row rounding (legacy/court default) → whole kronor per row.
+    // The 1597 flows from UTLAGG → ARVODE via cross-processor context;
+    // the ARVODE table's UTLÄGG row is empty in this snapshot but the
+    // amount is still pulled from UTLAGG's totalExMomsKr.
     const expectedArvode = Math.round(5.5 * 1626); // 8943
     const expectedTids = Math.round(0.5 * 1487); // 744 (743.5 rounded up)
-    expect(arvodeTotal).toBe(expectedArvode + expectedTids);
+    const expectedUtlagg = 1597;
+    expect(arvodeTotal).toBe(expectedArvode + expectedTids + expectedUtlagg);
 
     // UTLAGG totals must surface for downstream ARVODE_TOTAL.
     expect(getUtlaggTotalsFromContext(ctx)).toEqual({ exMomsKr: 1597, ejMomsKr: 0 });
@@ -151,6 +153,43 @@ describe('cross-processor regression: Cecilia bug report 2026-05-02', () => {
     const flat = snap.flat(2).join('|');
     expect(flat).toContain('8 943,00 kr'); // 5.50 × 1626 = 8943
     expect(flat).toContain('744,00 kr'); // 0.50 × 1487 = 743.50 → per-row rounding lifts to 744
+  });
+
+  it('clears the ARVODE UTLÄGG row spec col and writes the canonical amount from UTLAGG', async () => {
+    // The user's complaint: the ARVODE table's UTLÄGG row showed
+    // "1.00" antal alongside the kr amount. After the fix, only the
+    // canonical kr amount is written and spec is cleared.
+    const registry = new MapProcessorRegistry();
+    registry.register(new UtlaggProcessor({ getCurrentUser: () => CECILIA }));
+    registry.register(new ArgrupperTiderProcessor({ now: () => NOW }));
+    registry.register(new ArvodeProcessor());
+
+    const arvodeWithStaleAntal: readonly (readonly [string, string, string])[] = [
+      ['', '', ''],
+      ['ARVODE', ' á 1626 kr', ' kr'],
+      ['ARVODE HELG', ' á 3256 kr', ' kr'],
+      ['TIDSSPILLAN', ' á 1487 kr', ' kr'],
+      ['TIDSSPILLAN ÖVRIG TID', ' á 975 kr', ' kr'],
+      ['UTLÄGG', '1.00', ' 1,597.00 kr'], // ← Cecilia's manual antal+amt
+    ];
+    const arvodeRange = table(arvodeWithStaleAntal);
+
+    const ctx = new KatsContext();
+    const discoveries: Discovery[] = [
+      { tag: tagName('KATS_UTLAGGSSPECIFIKATION'), range: table(CECILIA_UTLAGG) },
+      { tag: tagName('KATS_ARGRUPPERTIDERDATUMANTALSUMMA'), range: table(CECILIA_ARGRUPPER) },
+      { tag: tagName('KATS_ARVODE'), range: arvodeRange },
+    ];
+    await runPipeline(discoveries, registry, ctx);
+
+    const snap = arvodeRange.snapshot();
+    // Locate the UTLÄGG row in the post-render snapshot.
+    const utlaggRow = snap.find((row) => (row[0] ?? []).join('').includes('UTL'));
+    expect(utlaggRow).toBeDefined();
+    // Spec col 1 should be empty (cleared); amount col 2 should be the
+    // formatted utlägg total from UTLAGG (1597 kr).
+    expect((utlaggRow ?? [])[1]).toEqual([]);
+    expect((utlaggRow ?? [])[2]?.join('')).toBe('1 597,00 kr');
   });
 
   it('parses English-formatted utlägg amount "1,597.00 kr" correctly (last separator wins)', async () => {

@@ -53,12 +53,28 @@ describe('svToNumber — Swedish/English number parser', () => {
     expect(svToNumber('1,234,56')).toBe(1234.56);
   });
 
-  it('keeps single-separator inputs as decimal (legacy / unambiguous)', () => {
-    // Only one separator type → assume decimal. Cannot distinguish
-    // Swedish 1.5 from English 1500 without context.
-    expect(svToNumber('1,500')).toBe(1.5);
-    expect(svToNumber('1.500')).toBe(1.5);
+  it('treats single-separator inputs matching the thousands pattern as integers', () => {
+    // `\d{1,3}(sep\d{3})+` is the canonical thousands-grouping shape.
+    // We bias toward thousands here because real-world money values
+    // matching this pattern are nearly always thousands-formatted (the
+    // Swedish "1,597" decimal interpretation would be unusually precise
+    // for kronor). Cecilia's English-formatted utlägg "1,597" relies on
+    // this — without it the rate parsed as 1.597 and rounded to 2 kr.
+    expect(svToNumber('1,597')).toBe(1597);
+    expect(svToNumber('1.597')).toBe(1597);
+    expect(svToNumber('1,000,000')).toBe(1000000);
+    expect(svToNumber('1.000.000')).toBe(1000000);
+  });
+
+  it('treats single-separator inputs NOT matching the thousands pattern as decimal', () => {
+    // Anything else with a single separator falls back to legacy
+    // Swedish-decimal interpretation. `,5` / `,50` / `,75` are 1-2
+    // trailing digits — clearly decimals, not thousands groups.
+    expect(svToNumber('1,5')).toBe(1.5);
+    expect(svToNumber('1.5')).toBe(1.5);
     expect(svToNumber('850,50')).toBe(850.5);
+    expect(svToNumber('0,75')).toBe(0.75);
+    expect(svToNumber('12,34')).toBe(12.34);
   });
 
   it('returns 0 for empty / unparseable', () => {

@@ -344,6 +344,89 @@ describe('computeArvode — per-category rate override', () => {
   });
 });
 
+describe('computeArvode — utlaggExMomsKr cross-processor input', () => {
+  it('clears the UTLÄGG row spec col and writes the canonical kr amount', () => {
+    // The user's UTLÄGG row had "1.00" in spec; with utlaggExMomsKr
+    // provided we drop that and write the amount directly.
+    const state = computeArvode({
+      read: makeRead(STD_TABLE),
+      useTaxa: false,
+      hearingMinutes: 0,
+      hours: { ...ZERO_HOURS, arvode: 1 },
+      utlaggExMomsKr: 1597,
+    });
+    const utlaggSpec = state.patches.find(
+      (p) => p.row === 5 && p.col === 1 && p.paragraphs.length === 0,
+    );
+    const utlaggAmt = state.patches.find(
+      (p) => p.row === 5 && p.col === 2 && p.paragraphs.join('') === '1 597,00 kr',
+    );
+    expect(utlaggSpec).toBeDefined();
+    expect(utlaggAmt).toBeDefined();
+  });
+
+  it('uses utlaggExMomsKr in the moms-base total instead of the existing cell', () => {
+    // STD_TABLE has "550 kr" in the UTLÄGG row's amount cell. With
+    // utlaggExMomsKr=1597 supplied, the total should pick 1597 not 550.
+    const state = computeArvode({
+      read: makeRead(STD_TABLE),
+      useTaxa: false,
+      hearingMinutes: 0,
+      hours: { ...ZERO_HOURS, arvode: 2 },
+      utlaggExMomsKr: 1597,
+    });
+    // 2 × 850 (doc rate) + 1597 utlägg = 3297, NOT 2 × 850 + 550 = 2250.
+    expect(state.totalExMomsKr).toBe(2 * 850 + 1597);
+  });
+
+  it('falls back to existing UTLÄGG cell when utlaggExMomsKr is undefined', () => {
+    // STD_TABLE: arvode row spec rate = 850, utlägg amount cell = 550.
+    const state = computeArvode({
+      read: makeRead(STD_TABLE),
+      useTaxa: false,
+      hearingMinutes: 0,
+      hours: { ...ZERO_HOURS, arvode: 1 },
+      // no utlaggExMomsKr
+    });
+    // No spec patch on row 5 (left untouched), no fresh amount patch.
+    const utlaggSpec = state.patches.find((p) => p.row === 5 && p.col === 1);
+    const utlaggAmt = state.patches.find((p) => p.row === 5 && p.col === 2);
+    expect(utlaggSpec).toBeUndefined();
+    expect(utlaggAmt).toBeUndefined();
+    // Total uses the cell value (550).
+    expect(state.totalExMomsKr).toBe(850 + 550);
+  });
+
+  it('deletes the UTLÄGG row when utlaggExMomsKr is 0', () => {
+    const state = computeArvode({
+      read: makeRead(STD_TABLE),
+      useTaxa: false,
+      hearingMinutes: 0,
+      hours: { ...ZERO_HOURS, arvode: 1 },
+      utlaggExMomsKr: 0,
+    });
+    expect(state.rowsToDelete).toContain(5);
+  });
+
+  it('uses utlaggExMomsKr in the taxa path total too', () => {
+    // Taxa path: arvode = taxa amount; utlägg added separately.
+    // 75 minutes → 5106 kr taxa. Plus 1597 utlägg = 6703.
+    const state = computeArvode({
+      read: makeRead(STD_TABLE),
+      useTaxa: true,
+      hearingMinutes: 75,
+      hours: ZERO_HOURS,
+      utlaggExMomsKr: 1597,
+    });
+    expect(state.totalExMomsKr).toBe(5106 + 1597);
+    // And the row's spec col is cleared + amount written.
+    const utlaggSpec = state.patches.find(
+      (p) => p.row === 5 && p.col === 1 && p.paragraphs.length === 0,
+    );
+    expect(utlaggSpec).toBeDefined();
+  });
+});
+
 describe('ArvodeProcessor — pipeline integration', () => {
   it('runs end-to-end with ARGRUPPER state in ctx', async () => {
     const registry = new MapProcessorRegistry();

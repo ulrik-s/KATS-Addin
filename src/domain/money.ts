@@ -11,10 +11,22 @@
  *   - currency suffix:     " kr"
  *
  * Input parsing accepts both Swedish ("1 234,56") and English
- * ("1,234.56") number formats. When both `,` and `.` appear, the LAST
- * occurrence is taken as the decimal separator and the other-type
- * separators get treated as thousands grouping. With only one
- * separator type, it is treated as the decimal separator.
+ * ("1,234.56") number formats. The disambiguation rules:
+ *
+ *   1. Both `,` and `.` present  → last occurrence is the decimal
+ *      separator; earlier separators of either type are thousands
+ *      groupings (dropped).
+ *
+ *   2. Single separator type, repeated as `\d{1,3}(sep\d{3})+` with
+ *      nothing else                → unambiguous thousands pattern.
+ *      Drop separators. Handles both English "1,597" → 1597 and the
+ *      Swedish "1.597" thousand-form. Catches the common case where
+ *      utlägg amounts are entered with a leading thousand separator.
+ *
+ *   3. Otherwise (single separator that doesn't fit the thousands
+ *      pattern, e.g. "1,5" / "0,50" / "850,75")
+ *                                  → treat the separator as decimal
+ *      (legacy Swedish behavior).
  */
 
 /**
@@ -29,29 +41,22 @@
  * to legacy "single separator = decimal" behavior — there's no way to
  * disambiguate Swedish 1.5 from English 1500 without more context.
  */
+/** Pure thousands-grouping (no decimal): `1,597`, `1,000,000`, `1.597`, etc. */
+const PURE_THOUSANDS_RE = /^-?\d{1,3}((?<sep>[,.])\d{3})(\k<sep>\d{3})*$/;
+
 export function svToNumber(raw: string): number {
   const s = raw.trim();
   if (s.length === 0) return 0;
 
-  // Find which separator (if any) acts as the decimal point: when both
-  // `,` and `.` appear, the last occurrence wins. When only one type
-  // appears, it is the decimal.
-  const lastComma = s.lastIndexOf(',');
-  const lastDot = s.lastIndexOf('.');
-  const hasComma = lastComma !== -1;
-  const hasDot = lastDot !== -1;
-  const decimalIndex =
-    hasComma && hasDot
-      ? Math.max(lastComma, lastDot)
-      : hasComma
-        ? lastComma
-        : hasDot
-          ? lastDot
-          : -1;
+  // Strip non-essential characters (spaces, "kr", currency markers)
+  // before pattern-matching so heuristics aren't fooled by suffixes.
+  // Keep digits, sign, and separators.
+  const compact = s.replace(/[^\d,.-]/g, '');
+  const decimalIndex = pickDecimalIndex(compact);
 
   let out = '';
-  for (let i = 0; i < s.length; i += 1) {
-    const ch = s.charAt(i);
+  for (let i = 0; i < compact.length; i += 1) {
+    const ch = compact.charAt(i);
     if (ch === '-' && out.length === 0) {
       out += '-';
     } else if (ch >= '0' && ch <= '9') {
@@ -59,13 +64,37 @@ export function svToNumber(raw: string): number {
     } else if ((ch === ',' || ch === '.') && i === decimalIndex) {
       out += '.';
     }
-    // Any other separator occurrence (other-type or earlier same-type)
-    // is treated as a thousands separator and dropped.
+    // Any other separator occurrence (wrong type or non-decimal-index
+    // same-type) is treated as a thousands separator and dropped.
   }
 
   if (out === '' || out === '-' || out === '.' || out === '-.') return 0;
   const n = Number(out);
   return Number.isFinite(n) ? n : 0;
+}
+
+/**
+ * Decide which `,` / `.` index in `compact` is the decimal point.
+ * Returns -1 when there is no decimal (i.e. the string is integer-only
+ * or a pure thousands-grouping pattern).
+ */
+function pickDecimalIndex(compact: string): number {
+  const lastComma = compact.lastIndexOf(',');
+  const lastDot = compact.lastIndexOf('.');
+  const hasComma = lastComma !== -1;
+  const hasDot = lastDot !== -1;
+
+  // Mixed: last separator wins.
+  if (hasComma && hasDot) return Math.max(lastComma, lastDot);
+
+  // Single-type, but matches the pure-thousands grouping pattern → no
+  // decimal. "1,597" / "1.597" / "1,000,000" / "1.000.000" all qualify.
+  if ((hasComma || hasDot) && PURE_THOUSANDS_RE.test(compact)) return -1;
+
+  // Single separator that doesn't fit thousands grouping → it is the decimal.
+  if (hasComma) return lastComma;
+  if (hasDot) return lastDot;
+  return -1;
 }
 
 /**
