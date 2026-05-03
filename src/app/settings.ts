@@ -55,7 +55,7 @@ export interface CategoryRates {
 export const DEFAULT_RATES: CategoryRates = {
   arvode: 1626,
   arvodeHelg: 3256,
-  tidsspillan: 1587,
+  tidsspillan: 1487,
   tidsspillanOvrigTid: 975,
 };
 

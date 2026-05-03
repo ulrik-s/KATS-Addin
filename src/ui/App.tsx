@@ -1,5 +1,5 @@
 import { useState, type ChangeEvent, type JSX } from 'react';
-import { KATS_ADDIN_VERSION } from '../index.js';
+import { KATS_ADDIN_VERSION, KATS_BUILD_KIND, KATS_GIT_BRANCH } from '../index.js';
 import { getStoredUserKey, listAllUsers, setCurrentUserKey } from '../app/current-user.js';
 import { formatError } from '../app/format-error.js';
 import { mailDebugDocument } from '../app/mail-debug.js';
@@ -70,7 +70,7 @@ export function App(): JSX.Element {
     setStatus({ kind: 'busy', message: 'Processar dokumentet…' });
     try {
       const result = await runOnActiveDocument();
-      const { tagsProcessed, skippedTags } = result;
+      const { tagsProcessed, skippedTags, warnings } = result;
       const lines: string[] = [];
       if (tagsProcessed > 0) {
         lines.push(`Klar — ${String(tagsProcessed)} tagg(ar) processade.`);
@@ -83,10 +83,10 @@ export function App(): JSX.Element {
             `(markörer borttagna): ${skippedTags.join(', ')}.`,
         );
       }
-      setStatus({
-        kind: tagsProcessed > 0 ? 'success' : 'info',
-        message: lines.join('\n'),
-      });
+      for (const w of warnings) lines.push(`Varning: ${w}`);
+      const kind: StatusState['kind'] =
+        warnings.length > 0 ? 'error' : tagsProcessed > 0 ? 'success' : 'info';
+      setStatus({ kind, message: lines.join('\n') });
     } catch (cause) {
       const message = formatError(cause);
       setStatus({ kind: 'error', message: `Misslyckades: ${message}` });
@@ -130,7 +130,16 @@ export function App(): JSX.Element {
   return (
     <main>
       <h1>KATS</h1>
-      <p className="kats-version">version {KATS_ADDIN_VERSION}</p>
+      <p className="kats-version">
+        {KATS_BUILD_KIND === 'dev' ? (
+          <span className="kats-build-badge kats-build-badge-dev">DEV</span>
+        ) : KATS_BUILD_KIND === 'prod' ? (
+          <span className="kats-build-badge kats-build-badge-prod">PROD</span>
+        ) : null}
+        <span className="kats-version-text">
+          {KATS_ADDIN_VERSION} · {KATS_GIT_BRANCH}
+        </span>
+      </p>
 
       <div className="kats-buttons">
         <button

@@ -1,11 +1,38 @@
 import { z } from 'zod';
+import type { LabelSpec } from '../../domain/swedish-text.js';
 
 export const UTLAGG_READ_KEY = 'utlagg.read';
 export const UTLAGG_STATE_KEY = 'utlagg';
 
-/** Section heading labels (matched loose-equality against col 0). */
-export const UTLAGG_SECTION_VAT = 'Utlägg';
-export const UTLAGG_SECTION_NO_VAT = 'Utlägg momsfri';
+/**
+ * Section heading specs — primary form is the canonical Swedish KATS
+ * template heading, aliases are tolerated when drafters have translated
+ * or otherwise drifted the heading. Any cell whose trimmed text
+ * loose-matches *any* variant counts as the heading.
+ */
+export const UTLAGG_SECTION_VAT: LabelSpec = {
+  primary: 'Utlägg',
+  aliases: ['Expenses', 'Expense', 'Disbursements', 'Outlay'],
+};
+
+export const UTLAGG_SECTION_NO_VAT: LabelSpec = {
+  primary: 'Utlägg momsfri',
+  aliases: [
+    'Utlägg, momsfri',
+    'Utlägg utan moms',
+    'VAT-free expenses',
+    'Expenses, VAT-free',
+    'Tax-free expenses',
+    'Expenses no VAT',
+    'Expenses without VAT',
+  ],
+};
+
+/** Summary row label: trimmed col-0 text after the section heading. */
+export const UTLAGG_SUMMARY_LABEL: LabelSpec = {
+  primary: 'Summa',
+  aliases: ['Total', 'Totalt', 'Sum', 'Subtotal', 'Sum total'],
+};
 
 /** Column indices in the 5-column expense table. */
 export const UTLAGG_COL = {
@@ -39,5 +66,7 @@ export const utlaggStateSchema = z.object({
   /** Section totals in kronor (rounded to whole kronor, parity with VBA). */
   totalExMomsKr: z.number(),
   totalEjMomsKr: z.number(),
+  /** User-facing diagnostic messages — see ArgrupperState.warnings. */
+  warnings: z.array(z.string()).readonly(),
 });
 export type UtlaggState = z.infer<typeof utlaggStateSchema>;

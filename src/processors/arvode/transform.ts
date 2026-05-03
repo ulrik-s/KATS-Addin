@@ -52,6 +52,19 @@ export interface ComputeArvodeInput {
     readonly tidsspillan: number;
     readonly tidsspillanOvrigTid: number;
   };
+  /**
+   * Optional. Sum of UTLÄGG (with-VAT) from the upstream UTLAGG
+   * processor. When provided, the ARVODE table's UTLÄGG row is
+   * authoritatively rewritten: spec cell cleared (no "antal"), amount
+   * cell formatted from this number, and the moms-base total uses
+   * this value instead of re-parsing the existing amount cell. Single
+   * source of truth for utlägg flows from UTLAGG → ARVODE → ARVODE_TOTAL.
+   *
+   * Production wires this from `getUtlaggTotalsFromContext(ctx).exMomsKr`.
+   * Undefined when UTLAGG didn't run; the transform then falls back to
+   * reading the existing amount cell (legacy behavior).
+   */
+  readonly utlaggExMomsKr?: number;
 }
 
 const HOURS_DECIMALS = 2;
@@ -66,7 +79,6 @@ export function computeArvode(input: ComputeArvodeInput): ArvodeState {
 // rounding-mode and rate-override settings don't apply here.
 
 function computeTaxaPath(input: ComputeArvodeInput): ArvodeState {
-  const cells = input.read.cells;
   const patches: CellPatch[] = [];
 
   const taxaAmount = getTaxaAmount(input.hearingMinutes);
@@ -81,7 +93,7 @@ function computeTaxaPath(input: ComputeArvodeInput): ArvodeState {
     paragraphs: [formatSvMoney(taxaAmount)],
   });
 
-  const utlaggAmount = readMoneyFromCell(cells, ARVODE_ROW.utlagg, ARVODE_COL.amount);
+  const utlaggAmount = resolveUtlaggAmount(input, patches);
   let total = taxaAmount + utlaggAmount;
 
   // Tidsspillan > 1h becomes "överstigande 1 tim" billed as (h-1) × rate.
@@ -113,7 +125,7 @@ function computeTaxaPath(input: ComputeArvodeInput): ArvodeState {
   }
 
   const rowsToDelete: number[] = [];
-  if (isCellAmountZero(cells, ARVODE_ROW.utlagg, ARVODE_COL.amount)) {
+  if (utlaggAmount === 0) {
     rowsToDelete.push(ARVODE_ROW.utlagg);
   }
   if (!keepTidsspillan) rowsToDelete.push(ARVODE_ROW.tidsspillan);
@@ -160,16 +172,22 @@ function computeNormalPath(input: ComputeArvodeInput): ArvodeState {
   apply(ARVODE_ROW.tidsspillan, input.hours.tidsspillan);
   apply(ARVODE_ROW.tidsspillanOvrigTid, input.hours.tidsspillanOvrigTid);
 
-  // Sum the amount column across all relevant rows. Rendered rows
-  // contribute the value we just stored (rounded or exact depending on
-  // mode); unrendered rows contribute whatever was already in the cell.
-  let total = 0;
+  // Resolve the UTLÄGG row's amount: prefer the cross-processor sum
+  // from UTLAGG (single source of truth); fall back to the existing
+  // cell when UTLAGG didn't run. resolveUtlaggAmount also pushes the
+  // patches to clear the spec col + write the canonical kr amount when
+  // we have an authoritative value.
+  const utlaggAmount = resolveUtlaggAmount(input, patches);
+
+  // Sum the amount column across all relevant rows. Hour-category rows
+  // contribute their freshly-rendered value; the UTLÄGG row contributes
+  // the resolved amount.
+  let total = utlaggAmount;
   for (const r of [
     ARVODE_ROW.arvode,
     ARVODE_ROW.arvodeHelg,
     ARVODE_ROW.tidsspillan,
     ARVODE_ROW.tidsspillanOvrigTid,
-    ARVODE_ROW.utlagg,
   ]) {
     const rendered = renderedAmounts.get(r);
     if (rendered !== undefined) {
@@ -185,8 +203,12 @@ function computeNormalPath(input: ComputeArvodeInput): ArvodeState {
   const totalRounded = perRow ? roundToDecimals(total, 2) : roundToDecimals(total, 0);
 
   const rowsToDelete: number[] = [];
+  // UTLÄGG row deletion uses the resolved (cross-processor) amount.
+  if (roundToDecimals(utlaggAmount, 2) === 0) {
+    rowsToDelete.push(ARVODE_ROW.utlagg);
+  }
+  // Hour-category rows: keep when rendered, else delete when empty/zero.
   for (const r of [
-    ARVODE_ROW.utlagg,
     ARVODE_ROW.tidsspillanOvrigTid,
     ARVODE_ROW.tidsspillan,
     ARVODE_ROW.arvodeHelg,
@@ -249,14 +271,36 @@ function readMoneyFromCell(
   return roundToDecimals(svToNumber(cellText(cells, row, col)), 2);
 }
 
-function isCellAmountZero(
-  cells: readonly (readonly (readonly string[])[])[],
-  row: number,
-  col: number,
-): boolean {
-  const text = cellText(cells, row, col);
-  if (!hasAnyDigit(text)) return true;
-  return readMoneyFromCell(cells, row, col) === 0;
+/**
+ * Single source of truth for the UTLÄGG row's amount.
+ *
+ * When `input.utlaggExMomsKr` is provided (production: from
+ * `getUtlaggTotalsFromContext`), we treat it as authoritative:
+ *   - emit a patch clearing the spec/"antal" cell — utlägg never has
+ *     a per-hour breakdown to show, only an amount;
+ *   - emit a patch writing the canonical Swedish-formatted kr amount
+ *     to the amount cell;
+ *   - return the same amount for use in the moms-base total.
+ *
+ * When undefined (UTLAGG didn't run), fall back to reading whatever
+ * the user wrote in the amount cell. The spec cell is left alone.
+ */
+function resolveUtlaggAmount(input: ComputeArvodeInput, patches: CellPatch[]): number {
+  if (input.utlaggExMomsKr !== undefined) {
+    const amount = roundToDecimals(input.utlaggExMomsKr, 2);
+    patches.push({
+      row: ARVODE_ROW.utlagg,
+      col: ARVODE_COL.spec,
+      paragraphs: [],
+    });
+    patches.push({
+      row: ARVODE_ROW.utlagg,
+      col: ARVODE_COL.amount,
+      paragraphs: [formatSvMoney(amount)],
+    });
+    return amount;
+  }
+  return readMoneyFromCell(input.read.cells, ARVODE_ROW.utlagg, ARVODE_COL.amount);
 }
 
 function dedupeAndSortDescending(rows: readonly number[]): number[] {

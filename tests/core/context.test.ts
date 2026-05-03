@@ -52,6 +52,54 @@ describe('KatsContext — slots', () => {
   });
 });
 
+describe('KatsContext — warnings', () => {
+  it('starts with an empty warnings list', () => {
+    expect(new KatsContext().warnings).toEqual([]);
+  });
+
+  it('addWarning appends a message', () => {
+    const ctx = new KatsContext();
+    ctx.addWarning('first');
+    ctx.addWarning('second');
+    expect(ctx.warnings).toEqual(['first', 'second']);
+  });
+
+  it('addWarning silently ignores empty strings', () => {
+    const ctx = new KatsContext();
+    ctx.addWarning('');
+    expect(ctx.warnings).toEqual([]);
+  });
+
+  it('addWarning dedupes byte-identical messages', () => {
+    const ctx = new KatsContext();
+    ctx.addWarning('same');
+    ctx.addWarning('same');
+    expect(ctx.warnings).toEqual(['same']);
+  });
+
+  it('addWarnings forwards each message and respects dedup', () => {
+    const ctx = new KatsContext();
+    ctx.addWarnings(['a', 'b', 'a', 'c']);
+    expect(ctx.warnings).toEqual(['a', 'b', 'c']);
+  });
+
+  it('warnings getter returns a defensive copy', () => {
+    const ctx = new KatsContext();
+    ctx.addWarning('original');
+    const snapshot = ctx.warnings as string[];
+    snapshot.push('mutated');
+    expect(ctx.warnings).toEqual(['original']);
+  });
+
+  it('warnings persist independently of slot/tag state', () => {
+    const ctx = new KatsContext();
+    ctx.addWarning('w1');
+    ctx.setSlot('example', exampleSchema, { total: 1, label: 'x' });
+    ctx.addTag(tagName('KATS_UTLAGG'));
+    expect(ctx.warnings).toEqual(['w1']);
+  });
+});
+
 describe('KatsContext — tags', () => {
   it('tracks discovered tags', () => {
     const ctx = new KatsContext();

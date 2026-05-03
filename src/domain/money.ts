@@ -10,37 +10,91 @@
  *   - decimal separator:   U+002C (comma)
  *   - currency suffix:     " kr"
  *
- * Input parsing accepts BOTH "1 234,56" and "1234.56" — `,` and `.` are
- * interchangeable as decimal separator (first one wins, subsequent
- * occurrences are dropped, matching VBA `SvToCurrency`).
+ * Input parsing accepts both Swedish ("1 234,56") and English
+ * ("1,234.56") number formats. The disambiguation rules:
+ *
+ *   1. Both `,` and `.` present  → last occurrence is the decimal
+ *      separator; earlier separators of either type are thousands
+ *      groupings (dropped).
+ *
+ *   2. Single separator type, repeated as `\d{1,3}(sep\d{3})+` with
+ *      nothing else                → unambiguous thousands pattern.
+ *      Drop separators. Handles both English "1,597" → 1597 and the
+ *      Swedish "1.597" thousand-form. Catches the common case where
+ *      utlägg amounts are entered with a leading thousand separator.
+ *
+ *   3. Otherwise (single separator that doesn't fit the thousands
+ *      pattern, e.g. "1,5" / "0,50" / "850,75")
+ *                                  → treat the separator as decimal
+ *      (legacy Swedish behavior).
  */
 
 /**
  * Parse a Swedish-or-English-style number from free-form cell text.
- * Strips everything that isn't a digit, a leading minus, or the first
+ * Strips everything that isn't a digit, a leading minus, or a
  * decimal separator. Empty / unparseable input → 0.
+ *
+ * Mixed-separator strings ("1,597.00" English / "1.597,50" Swedish):
+ * the LAST `,` or `.` in the string is taken as the decimal separator;
+ * any earlier `,` / `.` are treated as thousands separators and dropped.
+ * Strings with only one separator type ("1,500" or "1.500") fall back
+ * to legacy "single separator = decimal" behavior — there's no way to
+ * disambiguate Swedish 1.5 from English 1500 without more context.
  */
+/** Pure thousands-grouping (no decimal): `1,597`, `1,000,000`, `1.597`, etc. */
+const PURE_THOUSANDS_RE = /^-?\d{1,3}((?<sep>[,.])\d{3})(\k<sep>\d{3})*$/;
+
 export function svToNumber(raw: string): number {
   const s = raw.trim();
   if (s.length === 0) return 0;
 
+  // Strip non-essential characters (spaces, "kr", currency markers)
+  // before pattern-matching so heuristics aren't fooled by suffixes.
+  // Keep digits, sign, and separators.
+  const compact = s.replace(/[^\d,.-]/g, '');
+  const decimalIndex = pickDecimalIndex(compact);
+
   let out = '';
-  let sawDecimal = false;
-  for (let i = 0; i < s.length; i += 1) {
-    const ch = s.charAt(i);
+  for (let i = 0; i < compact.length; i += 1) {
+    const ch = compact.charAt(i);
     if (ch === '-' && out.length === 0) {
       out += '-';
     } else if (ch >= '0' && ch <= '9') {
       out += ch;
-    } else if ((ch === ',' || ch === '.') && !sawDecimal) {
+    } else if ((ch === ',' || ch === '.') && i === decimalIndex) {
       out += '.';
-      sawDecimal = true;
     }
+    // Any other separator occurrence (wrong type or non-decimal-index
+    // same-type) is treated as a thousands separator and dropped.
   }
 
   if (out === '' || out === '-' || out === '.' || out === '-.') return 0;
   const n = Number(out);
   return Number.isFinite(n) ? n : 0;
+}
+
+/**
+ * Decide which `,` / `.` index in `compact` is the decimal point.
+ * Returns -1 when there is no decimal (i.e. the string is integer-only
+ * or a pure thousands-grouping pattern).
+ */
+function pickDecimalIndex(compact: string): number {
+  const lastComma = compact.lastIndexOf(',');
+  const lastDot = compact.lastIndexOf('.');
+  const hasComma = lastComma !== -1;
+  const hasDot = lastDot !== -1;
+
+  // Mixed: last separator wins.
+  if (hasComma && hasDot) return Math.max(lastComma, lastDot);
+
+  // Single-type, but matches the pure-thousands grouping pattern → no
+  // decimal. "1,597" / "1.597" / "1,000,000" / "1.000.000" all qualify.
+  if ((hasComma || hasDot) && PURE_THOUSANDS_RE.test(compact)) return -1;
+
+  // Single separator that doesn't fit thousands grouping → it is the decimal.
+  if (hasComma) return lastComma;
+  if (hasDot) return lastDot;
+  return -1;
 }
 
 /**
@@ -77,6 +131,10 @@ export function formatSvInt(n: number): string {
 /**
  * Format with N decimals using Swedish notation: `1234.5` with decimals=2
  * → `"1234,50"` (no thousand separator — matches VBA `FormatSvDecimal`).
+ *
+ * Use this for hours-style cells where the value is small (< 1000) and
+ * thousand-grouping would look out of place. For monetary values that
+ * can grow into the thousands, prefer `formatSvNumber`.
  */
 export function formatSvDecimal(v: number, decimals: number): string {
   const safeDecimals = decimals >= 0 && decimals <= 6 ? decimals : 2;
@@ -85,6 +143,44 @@ export function formatSvDecimal(v: number, decimals: number): string {
   // value but our `rounded` is already correctly rounded — toFixed just
   // formats. Replace `.` with `,`.
   return rounded.toFixed(safeDecimals).replace('.', ',');
+}
+
+/**
+ * Canonical Swedish numeric display: thousand-space groupings on the
+ * integer part, comma decimal separator, exactly `decimals` digits
+ * after the comma.
+ *
+ *   formatSvNumber(0.75, 2)      → "0,75"
+ *   formatSvNumber(1597, 0)      → "1 597"
+ *   formatSvNumber(1597.5, 2)    → "1 597,50"
+ *   formatSvNumber(10000.005, 2) → "10 000,01"   (half away from zero)
+ *   formatSvNumber(-1597, 0)     → "-1 597"
+ *
+ * Used for normalizing cells the user may have entered in English
+ * format ("1,597" / "1.00") — re-rendered as "1 597" / "1,00" after
+ * processing so the document is monolingual Swedish.
+ */
+export function formatSvNumber(v: number, decimals: number): string {
+  const safeDecimals = decimals >= 0 && decimals <= 6 ? decimals : 2;
+  const rounded = roundToDecimals(v, safeDecimals);
+  const negative = rounded < 0;
+  const abs = Math.abs(rounded);
+
+  if (safeDecimals === 0) {
+    return formatSvInt(rounded);
+  }
+
+  // Go through an integer "scaled" representation to avoid float
+  // weirdness at the decimal boundary.
+  const scale = 10 ** safeDecimals;
+  const totalScaled = roundHalfAwayFromZero(abs * scale);
+  const intPart = Math.floor(totalScaled / scale);
+  const fracPart = totalScaled % scale;
+
+  const intStr = formatSvInt(intPart);
+  const fracStr = fracPart.toString().padStart(safeDecimals, '0');
+  const out = `${intStr},${fracStr}`;
+  return negative ? `-${out}` : out;
 }
 
 /**

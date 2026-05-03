@@ -81,3 +81,57 @@ export function swedishLooseEquals(haystack: string, needle: string): boolean {
 export function normalizeKey(s: string): string {
   return nfc(s).toLowerCase().replace(/\s+/g, ' ').trim();
 }
+
+/**
+ * A label with its primary (canonical) form plus alternative spellings
+ * accepted as equivalent. Used by table processors so that drafts whose
+ * headings have been translated, abbreviated, or otherwise drifted still
+ * match. The primary form is what is shown back to users in diagnostic
+ * messages — aliases are silent fallbacks.
+ */
+export interface LabelSpec {
+  readonly primary: string;
+  readonly aliases?: readonly string[];
+}
+
+/** Accept either a bare string (no aliases) or a full LabelSpec. */
+export type LabelLike = string | LabelSpec;
+
+/** Flatten a LabelLike into the list of variants to try. */
+export function labelVariants(spec: LabelLike): readonly string[] {
+  if (typeof spec === 'string') return [spec];
+  return [spec.primary, ...(spec.aliases ?? [])];
+}
+
+/** Primary (display) form of a LabelLike. */
+export function labelPrimary(spec: LabelLike): string {
+  return typeof spec === 'string' ? spec : spec.primary;
+}
+
+/** Loose equality where any variant in `spec` may match. */
+export function swedishLooseEqualsAny(haystack: string, spec: LabelLike): boolean {
+  return labelVariants(spec).some((v) => swedishLooseEquals(haystack, v));
+}
+
+/** Loose `.includes()` where any variant in `spec` may match. */
+export function swedishLooseContainsAny(haystack: string, spec: LabelLike): boolean {
+  return labelVariants(spec).some((v) => swedishLooseContains(haystack, v));
+}
+
+/**
+ * Decide whether `currentText` should be rewritten to the canonical
+ * Swedish form of `spec`. Returns the primary form when `currentText`
+ * looks like an alias (or some other drifted spelling) that doesn't
+ * loose-equal the primary; returns null when the text is already
+ * canonical (case- and diacritic-insensitively) or empty.
+ *
+ * Used by table processors to write Swedish back over English drafts:
+ * matching is forgiving, but the rendered document should always end up
+ * in canonical Swedish.
+ */
+export function canonicalLabelOrNull(currentText: string, spec: LabelSpec): string | null {
+  const trimmed = nfc(currentText).trim();
+  if (trimmed.length === 0) return null;
+  if (swedishLooseEquals(trimmed, spec.primary)) return null;
+  return spec.primary;
+}

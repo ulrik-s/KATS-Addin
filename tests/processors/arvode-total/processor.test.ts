@@ -156,7 +156,7 @@ describe('ArvodeTotalProcessor — pipeline integration', () => {
 
     const ctx = new KatsContext();
     setArvodeState(ctx, { patches: [], rowsToDelete: [], totalExMomsKr: 4000 });
-    setUtlaggState(ctx, { patches: [], totalExMomsKr: 0, totalEjMomsKr: 250 });
+    setUtlaggState(ctx, { patches: [], totalExMomsKr: 0, totalEjMomsKr: 250, warnings: [] });
 
     const range = totalTable(STD_TABLE);
     const discoveries: Discovery[] = [{ tag: tagName('KATS_ARVODE_TOTAL'), range }];
@@ -180,7 +180,7 @@ describe('ArvodeTotalProcessor — pipeline integration', () => {
 
     const ctx = new KatsContext();
     setArvodeState(ctx, { patches: [], rowsToDelete: [], totalExMomsKr: 4000 });
-    setUtlaggState(ctx, { patches: [], totalExMomsKr: 0, totalEjMomsKr: 0 });
+    setUtlaggState(ctx, { patches: [], totalExMomsKr: 0, totalEjMomsKr: 0, warnings: [] });
 
     const range = totalTable(STD_TABLE);
     const discoveries: Discovery[] = [{ tag: tagName('KATS_ARVODE_TOTAL'), range }];

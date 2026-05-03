@@ -3,6 +3,7 @@ import {
   formatSvDecimal,
   formatSvInt,
   formatSvMoney,
+  formatSvNumber,
   hasAnyDigit,
   roundHalfAwayFromZero,
   roundToDecimals,
@@ -38,9 +39,43 @@ describe('svToNumber — Swedish/English number parser', () => {
     expect(svToNumber('1-234')).toBe(1234);
   });
 
-  it('drops second/third decimal separators', () => {
-    expect(svToNumber('1.234.56')).toBe(1.23456);
-    expect(svToNumber('1,234,56')).toBe(1.23456);
+  it('treats the last separator as decimal, earlier as thousands', () => {
+    // English-formatted money: "1,597.00 kr" — comma is thousands, dot
+    // is decimal. Pre-fix this read as 1.597 (first separator = decimal),
+    // which broke "Belopp exkl. moms" when an ARVODE table had
+    // English-formatted utlägg.
+    expect(svToNumber('1,597.00')).toBe(1597);
+    expect(svToNumber('1,597.00 kr')).toBe(1597);
+    expect(svToNumber('1,000,000.50')).toBe(1000000.5);
+    // Swedish-formatted with explicit period thousands: "1.500,75" → 1500.75.
+    expect(svToNumber('1.500,75')).toBe(1500.75);
+    // Repeated same-type separators get treated as thousands except the last.
+    expect(svToNumber('1.234.56')).toBe(1234.56);
+    expect(svToNumber('1,234,56')).toBe(1234.56);
+  });
+
+  it('treats single-separator inputs matching the thousands pattern as integers', () => {
+    // `\d{1,3}(sep\d{3})+` is the canonical thousands-grouping shape.
+    // We bias toward thousands here because real-world money values
+    // matching this pattern are nearly always thousands-formatted (the
+    // Swedish "1,597" decimal interpretation would be unusually precise
+    // for kronor). Cecilia's English-formatted utlägg "1,597" relies on
+    // this — without it the rate parsed as 1.597 and rounded to 2 kr.
+    expect(svToNumber('1,597')).toBe(1597);
+    expect(svToNumber('1.597')).toBe(1597);
+    expect(svToNumber('1,000,000')).toBe(1000000);
+    expect(svToNumber('1.000.000')).toBe(1000000);
+  });
+
+  it('treats single-separator inputs NOT matching the thousands pattern as decimal', () => {
+    // Anything else with a single separator falls back to legacy
+    // Swedish-decimal interpretation. `,5` / `,50` / `,75` are 1-2
+    // trailing digits — clearly decimals, not thousands groups.
+    expect(svToNumber('1,5')).toBe(1.5);
+    expect(svToNumber('1.5')).toBe(1.5);
+    expect(svToNumber('850,50')).toBe(850.5);
+    expect(svToNumber('0,75')).toBe(0.75);
+    expect(svToNumber('12,34')).toBe(12.34);
   });
 
   it('returns 0 for empty / unparseable', () => {
@@ -155,6 +190,43 @@ describe('formatSvDecimal', () => {
 
   it('handles negatives', () => {
     expect(formatSvDecimal(-1.5, 2)).toBe('-1,50');
+  });
+});
+
+describe('formatSvNumber — canonical Swedish display', () => {
+  it('returns plain integer formatting when decimals=0', () => {
+    expect(formatSvNumber(0, 0)).toBe('0');
+    expect(formatSvNumber(42, 0)).toBe('42');
+    expect(formatSvNumber(1597, 0)).toBe('1 597');
+    expect(formatSvNumber(1000000, 0)).toBe('1 000 000');
+  });
+
+  it('uses thousand-space + comma decimal for fractional values', () => {
+    expect(formatSvNumber(0.75, 2)).toBe('0,75');
+    expect(formatSvNumber(1597.5, 2)).toBe('1 597,50');
+    expect(formatSvNumber(10000.5, 2)).toBe('10 000,50');
+    expect(formatSvNumber(1234567.89, 2)).toBe('1 234 567,89');
+  });
+
+  it('rounds half-away-from-zero at the decimal boundary', () => {
+    expect(formatSvNumber(1.555, 2)).toBe('1,56');
+    expect(formatSvNumber(0.005, 2)).toBe('0,01');
+    expect(formatSvNumber(-0.005, 2)).toBe('-0,01');
+  });
+
+  it('formats whole-number inputs with the requested precision', () => {
+    expect(formatSvNumber(120, 2)).toBe('120,00');
+    expect(formatSvNumber(1597, 2)).toBe('1 597,00');
+  });
+
+  it('handles negatives', () => {
+    expect(formatSvNumber(-1597, 0)).toBe('-1 597');
+    expect(formatSvNumber(-1597.5, 2)).toBe('-1 597,50');
+  });
+
+  it('clamps invalid decimal counts to default of 2', () => {
+    expect(formatSvNumber(0.75, -1)).toBe('0,75');
+    expect(formatSvNumber(0.75, 99)).toBe('0,75');
   });
 });
 

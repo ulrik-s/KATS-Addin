@@ -45,6 +45,7 @@ export class ArgrupperTiderProcessor implements Processor {
     const read = requireArgrupperRead(ctx);
     const state = computeArgrupper({ read, now: this.deps.now() });
     setArgrupperState(ctx, state);
+    ctx.addWarnings(state.warnings);
   }
 
   async render(range: KatsRange, ctx: KatsContext): Promise<void> {

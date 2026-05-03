@@ -5,6 +5,7 @@ export {
   ARGRUPPER_READ_KEY,
   ARGRUPPER_SECTIONS,
   ARGRUPPER_STATE_KEY,
+  ARGRUPPER_SUMMARY_LABEL,
   argrupperReadSchema,
   argrupperStateSchema,
   categoryHoursSchema,

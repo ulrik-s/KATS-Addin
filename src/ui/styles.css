@@ -39,6 +39,33 @@ h1 {
   color: var(--kats-muted);
   font-size: 12px;
   margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.kats-version-text {
+  word-break: break-all;
+}
+
+.kats-build-badge {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  color: #fff;
+  flex-shrink: 0;
+}
+
+.kats-build-badge-dev {
+  background: #d83b01; /* orange-red — eye-catching, distinct from accent blue */
+}
+
+.kats-build-badge-prod {
+  background: var(--kats-success);
 }
 
 .kats-buttons {

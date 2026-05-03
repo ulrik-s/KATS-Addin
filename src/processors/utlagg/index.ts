@@ -5,6 +5,7 @@ export {
   UTLAGG_SECTION_NO_VAT,
   UTLAGG_SECTION_VAT,
   UTLAGG_STATE_KEY,
+  UTLAGG_SUMMARY_LABEL,
   utlaggReadSchema,
   utlaggStateSchema,
   type CellPatch,

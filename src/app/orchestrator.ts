@@ -25,6 +25,13 @@ export interface RunResult {
    * from the doc as usual; processing is skipped for these.
    */
   readonly skippedTags: readonly string[];
+  /**
+   * Soft diagnostics emitted by individual processors when they
+   * recovered from template drift (missing heading, missing summary
+   * row, etc.) — not fatal, but worth showing in the task pane so the
+   * drafter can clean up the source.
+   */
+  readonly warnings: readonly string[];
 }
 
 /**
@@ -120,7 +127,7 @@ export async function runOnActiveDocument(): Promise<RunResult> {
     const discoveries = await discoverKatsTags(body, PROCESSING_ORDER);
 
     if (discoveries.length === 0) {
-      return { tagsProcessed: 0, skippedTags: [] };
+      return { tagsProcessed: 0, skippedTags: [], warnings: [] };
     }
 
     const registry = buildRegistry(context.document);
@@ -145,6 +152,6 @@ export async function runOnActiveDocument(): Promise<RunResult> {
     await runPipeline(filtered, registry, ctx);
     await context.sync();
 
-    return { tagsProcessed: filtered.length, skippedTags };
+    return { tagsProcessed: filtered.length, skippedTags, warnings: ctx.warnings };
   });
 }
