@@ -224,6 +224,53 @@ describe('cross-processor regression: Cecilia bug report 2026-05-02', () => {
     expect(getArvodeExMomsFromContext(ctx)).toBe(8943 + 744 + 1597);
   });
 
+  it("renders all numeric cells in Swedish format (',' decimal, ' ' thousand)", async () => {
+    // The user complained that the rendered tables had a mix of
+    // English ("0.75", "1,597") and Swedish ("0,50") notation. Pin
+    // here that every numeric cell ends up Swedish-canonical.
+    const registry = new MapProcessorRegistry();
+    registry.register(new UtlaggProcessor({ getCurrentUser: () => CECILIA }));
+    registry.register(new ArgrupperTiderProcessor({ now: () => NOW }));
+    registry.register(new ArvodeProcessor());
+
+    const argrupperRange = table(CECILIA_ARGRUPPER);
+    const utlaggRange = table(CECILIA_UTLAGG);
+    const arvodeRange = table(CECILIA_ARVODE);
+    const ctx = new KatsContext();
+    const discoveries: Discovery[] = [
+      { tag: tagName('KATS_UTLAGGSSPECIFIKATION'), range: utlaggRange },
+      { tag: tagName('KATS_ARGRUPPERTIDERDATUMANTALSUMMA'), range: argrupperRange },
+      { tag: tagName('KATS_ARVODE'), range: arvodeRange },
+    ];
+    await runPipeline(discoveries, registry, ctx);
+
+    // ARGRUPPER hours column: every Cecilia entry was "0.75" / "0.10"
+    // / etc — must come out as "0,75" / "0,10".
+    const argSnap = argrupperRange.snapshot();
+    const argHourCells = argSnap.map((row) => row[2]?.join('') ?? '');
+    for (const cell of argHourCells) {
+      expect(cell).not.toMatch(/\d\.\d/); // no period decimal anywhere
+    }
+    // Spot-check specific values.
+    expect(argHourCells).toContain('0,75');
+    expect(argHourCells).toContain('2,10');
+    expect(argHourCells).toContain('5,50'); // section sum
+    expect(argHourCells).toContain('0,50'); // tidsspillan section sum
+
+    // UTLAGG: "1.00" qty becomes "1", "1,597" rate becomes "1 597",
+    // and the amount/total uses thousand-space ("1 597").
+    const utlaggSnap = utlaggRange.snapshot();
+    const utlaggFlat = utlaggSnap.flat(2).join('|');
+    expect(utlaggFlat).toContain('1 597'); // thousand-space rate + total
+    expect(utlaggFlat).not.toMatch(/1\.0[0-9]/); // no English "1.00" qty
+    expect(utlaggFlat).not.toMatch(/1,5\d\d(?!\d)/); // no comma-thousand "1,597"
+
+    // ARVODE: UTLÄGG row writes "1 597,00 kr" via formatSvMoney.
+    const arvSnap = arvodeRange.snapshot();
+    const arvFlat = arvSnap.flat(2).join('|');
+    expect(arvFlat).toContain('1 597,00 kr');
+  });
+
   it('writes Swedish back over English labels in ARGRUPPER + UTLÄGG tables', async () => {
     // The user-visible follow-up bug: matching English aliases worked,
     // but the rendered doc still showed "Fee" / "Total" / "Expenses".

@@ -3,6 +3,7 @@ import {
   formatSvDecimal,
   formatSvInt,
   formatSvMoney,
+  formatSvNumber,
   hasAnyDigit,
   roundHalfAwayFromZero,
   roundToDecimals,
@@ -189,6 +190,43 @@ describe('formatSvDecimal', () => {
 
   it('handles negatives', () => {
     expect(formatSvDecimal(-1.5, 2)).toBe('-1,50');
+  });
+});
+
+describe('formatSvNumber — canonical Swedish display', () => {
+  it('returns plain integer formatting when decimals=0', () => {
+    expect(formatSvNumber(0, 0)).toBe('0');
+    expect(formatSvNumber(42, 0)).toBe('42');
+    expect(formatSvNumber(1597, 0)).toBe('1 597');
+    expect(formatSvNumber(1000000, 0)).toBe('1 000 000');
+  });
+
+  it('uses thousand-space + comma decimal for fractional values', () => {
+    expect(formatSvNumber(0.75, 2)).toBe('0,75');
+    expect(formatSvNumber(1597.5, 2)).toBe('1 597,50');
+    expect(formatSvNumber(10000.5, 2)).toBe('10 000,50');
+    expect(formatSvNumber(1234567.89, 2)).toBe('1 234 567,89');
+  });
+
+  it('rounds half-away-from-zero at the decimal boundary', () => {
+    expect(formatSvNumber(1.555, 2)).toBe('1,56');
+    expect(formatSvNumber(0.005, 2)).toBe('0,01');
+    expect(formatSvNumber(-0.005, 2)).toBe('-0,01');
+  });
+
+  it('formats whole-number inputs with the requested precision', () => {
+    expect(formatSvNumber(120, 2)).toBe('120,00');
+    expect(formatSvNumber(1597, 2)).toBe('1 597,00');
+  });
+
+  it('handles negatives', () => {
+    expect(formatSvNumber(-1597, 0)).toBe('-1 597');
+    expect(formatSvNumber(-1597.5, 2)).toBe('-1 597,50');
+  });
+
+  it('clamps invalid decimal counts to default of 2', () => {
+    expect(formatSvNumber(0.75, -1)).toBe('0,75');
+    expect(formatSvNumber(0.75, 99)).toBe('0,75');
   });
 });
 

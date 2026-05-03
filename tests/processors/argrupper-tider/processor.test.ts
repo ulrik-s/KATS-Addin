@@ -225,6 +225,49 @@ describe('computeArgrupper — English / drifted heading aliases', () => {
   });
 });
 
+describe('computeArgrupper — hours cell normalization', () => {
+  // Hours typed as "0.75" / "1.50" (English period decimal) get
+  // re-rendered as "0,75" / "1,50" (Swedish comma) so the document is
+  // monolingual.
+  it('rewrites English-decimal hours to Swedish comma', () => {
+    const englishHours: readonly (readonly string[])[] = [
+      ['Datum', 'Beskr', 'Antal', 'Belopp'],
+      ['Arvode', '', '', ''],
+      ['2026-04-20', 'x', '0.75', ''],
+      ['2026-04-21', 'y', '1.50', ''],
+      ['Total', '', '', ''],
+    ];
+    const state = computeArgrupper({ read: makeReadFromRows(englishHours), now: NOW });
+    expect(state.patches).toContainEqual({ row: 2, col: 2, paragraphs: ['0,75'] });
+    expect(state.patches).toContainEqual({ row: 3, col: 2, paragraphs: ['1,50'] });
+  });
+
+  it('keeps already-Swedish hours unchanged in canonical form', () => {
+    const swedishHours: readonly (readonly string[])[] = [
+      ['Datum', 'Beskr', 'Antal', 'Belopp'],
+      ['Arvode', '', '', ''],
+      ['2026-04-20', 'x', '0,75', ''],
+      ['Summa', '', '', ''],
+    ];
+    const state = computeArgrupper({ read: makeReadFromRows(swedishHours), now: NOW });
+    // Patch is still emitted (idempotent re-format) but to the same
+    // canonical text "0,75" — re-rendering is harmless.
+    expect(state.patches).toContainEqual({ row: 2, col: 2, paragraphs: ['0,75'] });
+  });
+
+  it('does not patch zero-hours rows (skips empty cells)', () => {
+    const withEmpty: readonly (readonly string[])[] = [
+      ['Datum', 'Beskr', 'Antal', 'Belopp'],
+      ['Arvode', '', '', ''],
+      ['2026-04-20', 'description only, no hours', '', ''],
+      ['Summa', '', '', ''],
+    ];
+    const state = computeArgrupper({ read: makeReadFromRows(withEmpty), now: NOW });
+    const dataRowPatch = state.patches.find((p) => p.row === 2 && p.col === 2);
+    expect(dataRowPatch).toBeUndefined();
+  });
+});
+
 describe('computeArgrupper — alias → Swedish label rewriting', () => {
   // Cecilia's bug: matching English aliases worked, but the rendered
   // doc kept the English text. These tests pin that the transform now

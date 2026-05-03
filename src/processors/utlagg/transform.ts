@@ -1,7 +1,7 @@
 import { looksLikeIsoDate } from '../../domain/iso-date.js';
 import {
-  formatSvDecimal,
   formatSvInt,
+  formatSvNumber,
   roundHalfAwayFromZero,
   svToNumber,
 } from '../../domain/money.js';
@@ -127,10 +127,23 @@ function processSection(args: ProcessSectionArgs): number {
 
     if (args.applyMileage && swedishLooseContains(description, 'Milersättning')) {
       rate = args.mileageKrPerKm;
+    }
+
+    // Normalize qty + rate cells to canonical Swedish format. The user
+    // may have entered them in English ("1.00", "1,597"); we always
+    // re-render in Swedish so the document is monolingual.
+    if (qty !== 0) {
+      args.patches.push({
+        row: r,
+        col: UTLAGG_COL.quantity,
+        paragraphs: [formatSvNumber(qty, qtyDecimals(qty))],
+      });
+    }
+    if (rate !== 0) {
       args.patches.push({
         row: r,
         col: UTLAGG_COL.rate,
-        paragraphs: [formatSvDecimal(rate, 2)],
+        paragraphs: [formatSvNumber(rate, rateDecimals(rate))],
       });
     }
 
@@ -160,6 +173,20 @@ function processSection(args: ProcessSectionArgs): number {
   });
 
   return roundHalfAwayFromZero(totalKr);
+}
+
+/**
+ * Picks the right number of decimals for a quantity cell. Swedish
+ * convention: integer counts ("1 tolk", "120 km") render plain;
+ * fractional values get exactly 2 decimals ("0,50", "1,75").
+ */
+function qtyDecimals(v: number): number {
+  return Number.isInteger(v) ? 0 : 2;
+}
+
+/** Same convention for hourly/per-unit rates. */
+function rateDecimals(v: number): number {
+  return Number.isInteger(v) ? 0 : 2;
 }
 
 /**

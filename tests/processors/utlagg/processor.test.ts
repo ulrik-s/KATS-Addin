@@ -95,12 +95,19 @@ describe('UtlaggProcessor — transform (computeUtlagg pure logic)', () => {
     expect(state.totalExMomsKr).toBe(550 + 120 * 30);
   });
 
-  it('produces a rate-cell patch on mileage rows', () => {
+  it('rewrites the rate cell on mileage rows with the user mileage rate', () => {
+    // Mileage rate gets the canonical Swedish integer format ("25"
+    // when the rate is whole kronor; would gain ",NN" decimals if
+    // fractional).
     const state = computeUtlagg({ read: makeRead(), mileageKrPerKm: 25 });
-    const ratePatch = state.patches.find(
-      (p) => p.row === 3 && p.col === 3 && p.paragraphs.join('') === '25,00',
-    );
-    expect(ratePatch).toBeDefined();
+    const ratePatch = state.patches.find((p) => p.row === 3 && p.col === 3);
+    expect(ratePatch?.paragraphs).toEqual(['25']);
+  });
+
+  it('renders fractional mileage rate with 2 decimals', () => {
+    const state = computeUtlagg({ read: makeRead(), mileageKrPerKm: 25.5 });
+    const ratePatch = state.patches.find((p) => p.row === 3 && p.col === 3);
+    expect(ratePatch?.paragraphs).toEqual(['25,50']);
   });
 
   it('writes the computed amount to col 4 of each data row', () => {
@@ -155,9 +162,10 @@ describe('UtlaggProcessor — transform (computeUtlagg pure logic)', () => {
     const state = computeUtlagg({ read, mileageKrPerKm: 99 });
     // Mileage rule disabled here → use cell rate of 10.
     expect(state.totalEjMomsKr).toBe(100 * 10);
-    // No rate patch on the row.
+    // The rate IS normalized (every data row is) but to the user's
+    // value (10), not overwritten with the mileage default (99).
     const ratePatch = state.patches.find((p) => p.row === 2 && p.col === 3);
-    expect(ratePatch).toBeUndefined();
+    expect(ratePatch?.paragraphs).toEqual(['10']);
   });
 
   it('matches "Milersättning" loosely (encoding-mangled forms)', () => {
@@ -232,6 +240,82 @@ describe('UtlaggProcessor — English / drifted heading aliases', () => {
     ];
     const state = computeUtlagg({ read: makeRead(variant), mileageKrPerKm: 25 });
     expect(state.totalEjMomsKr).toBe(900);
+  });
+});
+
+describe('UtlaggProcessor — qty + rate cell normalization', () => {
+  // Standardize input cells to Swedish notation: comma decimal +
+  // space thousands. Users may have typed English-format values that
+  // happen to parse correctly; we still re-render in Swedish so the
+  // document is monolingual.
+  function makeRead(rows: readonly (readonly string[])[]): UtlaggRead {
+    return {
+      cells: rows.map((row) => row.map((cell) => (cell.length === 0 ? [] : [cell]))),
+    };
+  }
+
+  it('rewrites English-format qty "1.00" as "1" (integer)', () => {
+    const read = makeRead([
+      ['Datum', 'Beskr', 'Antal', 'á', 'Belopp'],
+      ['Utlägg', '', '', '', ''],
+      ['2026-04-30', 'Tolk', '1.00', '500', ''],
+      ['Summa', '', '', '', ''],
+    ]);
+    const state = computeUtlagg({ read, mileageKrPerKm: 25 });
+    const qtyPatch = state.patches.find((p) => p.row === 2 && p.col === 2);
+    expect(qtyPatch?.paragraphs).toEqual(['1']);
+  });
+
+  it('rewrites English-format rate "1,597" as "1 597" (thousand-space)', () => {
+    const read = makeRead([
+      ['Datum', 'Beskr', 'Antal', 'á', 'Belopp'],
+      ['Utlägg', '', '', '', ''],
+      ['2026-04-30', 'Tolk', '1', '1,597', ''],
+      ['Summa', '', '', '', ''],
+    ]);
+    const state = computeUtlagg({ read, mileageKrPerKm: 25 });
+    const ratePatch = state.patches.find((p) => p.row === 2 && p.col === 3);
+    expect(ratePatch?.paragraphs).toEqual(['1 597']);
+  });
+
+  it('renders fractional qty with 2 decimals + comma', () => {
+    const read = makeRead([
+      ['Datum', 'Beskr', 'Antal', 'á', 'Belopp'],
+      ['Utlägg', '', '', '', ''],
+      ['2026-04-30', 'Tolk', '0.75', '500', ''],
+      ['Summa', '', '', '', ''],
+    ]);
+    const state = computeUtlagg({ read, mileageKrPerKm: 25 });
+    const qtyPatch = state.patches.find((p) => p.row === 2 && p.col === 2);
+    expect(qtyPatch?.paragraphs).toEqual(['0,75']);
+  });
+
+  it('renders large rates with thousand-space and 2 decimals when fractional', () => {
+    const read = makeRead([
+      ['Datum', 'Beskr', 'Antal', 'á', 'Belopp'],
+      ['Utlägg', '', '', '', ''],
+      ['2026-04-30', 'x', '1', '12345.67', ''],
+      ['Summa', '', '', '', ''],
+    ]);
+    const state = computeUtlagg({ read, mileageKrPerKm: 25 });
+    const ratePatch = state.patches.find((p) => p.row === 2 && p.col === 3);
+    expect(ratePatch?.paragraphs).toEqual(['12 345,67']);
+  });
+
+  it('does not patch qty/rate when both are empty (no-op row)', () => {
+    const read = makeRead([
+      ['Datum', 'Beskr', 'Antal', 'á', 'Belopp'],
+      ['Utlägg', '', '', '', ''],
+      ['2026-04-30', 'Tolk', '', '', '500'],
+      ['Summa', '', '', '', ''],
+    ]);
+    const state = computeUtlagg({ read, mileageKrPerKm: 25 });
+    const qtyPatch = state.patches.find((p) => p.row === 2 && p.col === 2);
+    const ratePatch = state.patches.find((p) => p.row === 2 && p.col === 3);
+    expect(qtyPatch).toBeUndefined();
+    expect(ratePatch).toBeUndefined();
+    // existingAmount of 500 still flows through to the total.
+    expect(state.totalExMomsKr).toBe(500);
   });
 });
 
@@ -446,8 +530,8 @@ describe('UtlaggProcessor — render', () => {
     const snap = range.snapshot();
     // Row 2 amount cell
     expect(snap[2]?.[4]).toEqual(['550']);
-    // Row 3 (mileage) — rate written by mileage rule
-    expect(snap[3]?.[3]).toEqual(['25,00']);
+    // Row 3 (mileage) — rate written by mileage rule, rendered Swedish-canonical
+    expect(snap[3]?.[3]).toEqual(['25']);
     expect(snap[3]?.[4]).toEqual(['3 000']);
     // Row 4 summary
     expect(snap[4]?.[4]).toEqual(['3 550']);

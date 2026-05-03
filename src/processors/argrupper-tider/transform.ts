@@ -176,7 +176,18 @@ function computeSectionHours(
   for (let r = headingRow + 1; r < summaryRow; r += 1) {
     const dateText = cellText(cells, r, 0);
     if (!looksLikeIsoDate(dateText)) continue;
-    sum += svToNumber(cellText(cells, r, ARGRUPPER_HOURS_COL));
+    const hours = svToNumber(cellText(cells, r, ARGRUPPER_HOURS_COL));
+    sum += hours;
+    // Normalize the hours cell to canonical Swedish format. The user
+    // may have typed "0.75" (English period decimal); we render as
+    // "0,75" so the document is monolingual.
+    if (hours !== 0) {
+      patches.push({
+        row: r,
+        col: ARGRUPPER_HOURS_COL,
+        paragraphs: [formatSvDecimal(hours, HOURS_DECIMALS)],
+      });
+    }
   }
   const rounded = roundToDecimals(sum, HOURS_DECIMALS);
   patches.push({

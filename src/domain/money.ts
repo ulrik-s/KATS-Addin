@@ -131,6 +131,10 @@ export function formatSvInt(n: number): string {
 /**
  * Format with N decimals using Swedish notation: `1234.5` with decimals=2
  * → `"1234,50"` (no thousand separator — matches VBA `FormatSvDecimal`).
+ *
+ * Use this for hours-style cells where the value is small (< 1000) and
+ * thousand-grouping would look out of place. For monetary values that
+ * can grow into the thousands, prefer `formatSvNumber`.
  */
 export function formatSvDecimal(v: number, decimals: number): string {
   const safeDecimals = decimals >= 0 && decimals <= 6 ? decimals : 2;
@@ -139,6 +143,44 @@ export function formatSvDecimal(v: number, decimals: number): string {
   // value but our `rounded` is already correctly rounded — toFixed just
   // formats. Replace `.` with `,`.
   return rounded.toFixed(safeDecimals).replace('.', ',');
+}
+
+/**
+ * Canonical Swedish numeric display: thousand-space groupings on the
+ * integer part, comma decimal separator, exactly `decimals` digits
+ * after the comma.
+ *
+ *   formatSvNumber(0.75, 2)      → "0,75"
+ *   formatSvNumber(1597, 0)      → "1 597"
+ *   formatSvNumber(1597.5, 2)    → "1 597,50"
+ *   formatSvNumber(10000.005, 2) → "10 000,01"   (half away from zero)
+ *   formatSvNumber(-1597, 0)     → "-1 597"
+ *
+ * Used for normalizing cells the user may have entered in English
+ * format ("1,597" / "1.00") — re-rendered as "1 597" / "1,00" after
+ * processing so the document is monolingual Swedish.
+ */
+export function formatSvNumber(v: number, decimals: number): string {
+  const safeDecimals = decimals >= 0 && decimals <= 6 ? decimals : 2;
+  const rounded = roundToDecimals(v, safeDecimals);
+  const negative = rounded < 0;
+  const abs = Math.abs(rounded);
+
+  if (safeDecimals === 0) {
+    return formatSvInt(rounded);
+  }
+
+  // Go through an integer "scaled" representation to avoid float
+  // weirdness at the decimal boundary.
+  const scale = 10 ** safeDecimals;
+  const totalScaled = roundHalfAwayFromZero(abs * scale);
+  const intPart = Math.floor(totalScaled / scale);
+  const fracPart = totalScaled % scale;
+
+  const intStr = formatSvInt(intPart);
+  const fracStr = fracPart.toString().padStart(safeDecimals, '0');
+  const out = `${intStr},${fracStr}`;
+  return negative ? `-${out}` : out;
 }
 
 /**
