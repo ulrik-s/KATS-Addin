@@ -46,7 +46,12 @@ describe('YttrandeSignaturProcessor', () => {
     const p = makeProcessor();
     const ctx = new KatsContext();
     // MOTTAGARE ran and set a postort, but we must not use it.
-    setMottagareState(ctx, { firstLine: 'Whatever', postort: 'Stockholm' });
+    setMottagareState(ctx, {
+      firstLine: 'Whatever',
+      postort: 'Stockholm',
+      addressLines: ['Whatever'],
+      isCourt: false,
+    });
     p.transform(ctx);
     expect(requireYttrandeSignaturState(ctx).paragraphs[0]).toBe('Utopia den 24 april 2026');
   });

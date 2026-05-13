@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   extractNonEmptyLines,
   extractPostort,
+  isCourtRecipient,
   normalizeAddressText,
   parseAddressBlock,
   titleCaseCity,
@@ -104,6 +105,86 @@ describe('extractPostort', () => {
   it('works for city names with diacritics', () => {
     expect(extractPostort('391 33 kalmär')).toBe('Kalmär');
     expect(extractPostort('901 01 UMEÅ')).toBe('Umeå');
+  });
+});
+
+describe('isCourtRecipient — court detection from first address line', () => {
+  // The MOTTAGARE processor uses this to decide whether the recipient
+  // gets replaced with "via e-post" (courts) or rendered with the full
+  // address (everyone else). The user's spec listed: tingsrätt, hovrätt,
+  // förvaltningsrätt, kammarrätten, högsta förvaltningsrätten, högsta
+  // domstolen. Variants of each must match loose (case + diacritics).
+
+  describe('positive matches (courts)', () => {
+    const COURT_LINES = [
+      // Tingsrätt — district court
+      'Tingsrätten i Malmö',
+      'Malmö tingsrätt',
+      'TINGSRÄTTEN',
+      'tingsrätten',
+      'tingsratten', // diacritic stripped
+      // Hovrätt — appellate court
+      'Hovrätten över Skåne och Blekinge',
+      'Svea hovrätt',
+      'HOVRÄTTEN',
+      'hovratt', // diacritic stripped
+      // Förvaltningsrätt — administrative court
+      'Förvaltningsrätten i Malmö',
+      'Förvaltningsrätten',
+      'FÖRVALTNINGSRÄTT',
+      'forvaltningsratten',
+      // Kammarrätten
+      'Kammarrätten i Göteborg',
+      'KAMMARRÄTTEN',
+      'kammarratten',
+      // Högsta förvaltningsrätten / -domstolen
+      'Högsta förvaltningsrätten',
+      'Högsta förvaltningsdomstolen', // actual modern name
+      'HÖGSTA FÖRVALTNINGSRÄTTEN',
+      // Högsta domstolen
+      'Högsta domstolen',
+      'HÖGSTA DOMSTOLEN',
+      'hogsta domstolen', // diacritic stripped
+    ];
+
+    for (const line of COURT_LINES) {
+      it(`"${line}" → court`, () => {
+        expect(isCourtRecipient(line)).toBe(true);
+      });
+    }
+  });
+
+  describe('negative matches (not courts)', () => {
+    const NON_COURT_LINES = [
+      'Kronofogden',
+      'Hyresnämnden i Lund',
+      'Polisen Region Syd',
+      'Sjölin AB',
+      'Skatteverket',
+      'Försäkringskassan',
+      'Migrationsverket',
+      'Lunds kommun',
+      'Region Skåne',
+      'Marknadsdomstolen', // "domstolen" without "högsta" should NOT match
+      'Arbetsdomstolen', // same — single non-listed domstol
+      '',
+      '   ',
+    ];
+
+    for (const line of NON_COURT_LINES) {
+      it(`"${line}" → not court`, () => {
+        expect(isCourtRecipient(line)).toBe(false);
+      });
+    }
+  });
+
+  it('tolerates leading/trailing whitespace', () => {
+    expect(isCourtRecipient('   Tingsrätten i Lund   ')).toBe(true);
+  });
+
+  it('handles NFD-decomposed input (diacritic-loose)', () => {
+    // "Förvaltningsrätten" with combining diaeresis on ö.
+    expect(isCourtRecipient('Förvaltningsrätten i Stockholm')).toBe(true);
   });
 });
 

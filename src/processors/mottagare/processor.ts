@@ -1,9 +1,10 @@
 import { type KatsContext } from '../../core/context.js';
 import { ProcessorError } from '../../core/errors.js';
 import { type Processor, type TagName, requireTableRange, tagName } from '../../core/processor.js';
-import { parseAddressBlock } from '../../domain/address.js';
+import { extractNonEmptyLines, isCourtRecipient, parseAddressBlock } from '../../domain/address.js';
 import { nfc } from '../../domain/swedish-text.js';
 import { type KatsRange } from '../../io/kats-range.js';
+import { type MottagareState } from './schema.js';
 import { requireMottagareState, setMottagareState } from './state.js';
 
 const MOTTAGARE_TAG: TagName = tagName('KATS_MOTTAGARE');
@@ -12,16 +13,20 @@ const MOTTAGARE_TAG: TagName = tagName('KATS_MOTTAGARE');
 const ADDRESS_CELL_ROW = 0;
 const ADDRESS_CELL_COL = 1;
 
+/** Render-time addendum that replaces the postal address for courts. */
+const VIA_EPOST_LINE = 'via e-post';
+
 /**
  * Renders the recipient header at `[[KATS_MOTTAGARE]]`.
  *
  * Phases:
- *   read      — fetch the address-block cell; parse into firstLine + postort;
- *               store in ctx for SIGNATUR to consume downstream.
- *   transform — no-op; parsing happened at read time and downstream
- *               processors (SIGNATUR) access postort through ctx during
- *               their own transform.
- *   render    — replace the same cell with `firstLine` + "via e-post".
+ *   read      — fetch the address-block cell; parse into firstLine,
+ *               postort, full address line list, and the court-ness
+ *               flag; store in ctx for SIGNATUR (postort) and our own
+ *               render (everything else).
+ *   transform — no-op; parsing happened at read time.
+ *   render    — courts collapse to `firstLine + "via e-post"`;
+ *               everyone else keeps the full address block intact.
  */
 export class MottagareProcessor implements Processor {
   readonly tag = MOTTAGARE_TAG;
@@ -48,7 +53,13 @@ export class MottagareProcessor implements Processor {
     if (firstLine.length === 0) {
       throw new ProcessorError('recipient block is empty', this.tag, 'read');
     }
-    setMottagareState(ctx, { firstLine: nfc(firstLine), postort: nfc(postort) });
+    const addressLines = extractNonEmptyLines(raw).map(nfc);
+    setMottagareState(ctx, {
+      firstLine: nfc(firstLine),
+      postort: nfc(postort),
+      addressLines,
+      isCourt: isCourtRecipient(firstLine),
+    });
   }
 
   transform(_ctx: KatsContext): void {
@@ -60,9 +71,15 @@ export class MottagareProcessor implements Processor {
   async render(range: KatsRange, ctx: KatsContext): Promise<void> {
     const table = requireTableRange(range, this.tag, 'render');
     const state = requireMottagareState(ctx);
-    await table.setCellParagraphs(ADDRESS_CELL_ROW, ADDRESS_CELL_COL, [
-      state.firstLine,
-      'via e-post',
-    ]);
+    await table.setCellParagraphs(ADDRESS_CELL_ROW, ADDRESS_CELL_COL, renderParagraphsFor(state));
   }
+}
+
+/**
+ * Decide the rendered cell content from state. Pure (no Office JS, no
+ * ctx) — kept separate so the rendering rule is unit-testable and the
+ * processor stays a thin adapter.
+ */
+function renderParagraphsFor(state: MottagareState): readonly string[] {
+  return state.isCourt ? [state.firstLine, VIA_EPOST_LINE] : [...state.addressLines];
 }

@@ -1,4 +1,4 @@
-import { nfc } from './swedish-text.js';
+import { nfc, swedishLooseContains } from './swedish-text.js';
 
 /**
  * Address/recipient-block parsing. The VBA MOTTAGARE processor reads a
@@ -95,4 +95,47 @@ export function parseAddressBlock(raw: string): ParsedAddressBlock {
   const firstLine = lines[0] ?? '';
   const postort = extractPostort(raw);
   return { firstLine, postort };
+}
+
+/**
+ * Substrings — case- and diacritic-insensitive — that mark the recipient
+ * as a court. MOTTAGARE renders these as `firstLine + "via e-post"`;
+ * everything else gets the full address block preserved.
+ *
+ * Single source of truth. Adding a new court type means adding one
+ * substring here, with no other code change.
+ *
+ * Patterns chosen to substring-match common compound forms:
+ *   "tingsrätt"      → "Tingsrätten i Malmö", "Malmö tingsrätt"
+ *   "hovrätt"        → "Hovrätten över Skåne", "Svea hovrätt"
+ *   "förvaltningsrätt" → "Förvaltningsrätten i Stockholm",
+ *                        "Högsta förvaltningsrätten"
+ *   "förvaltningsdomstolen" → "Högsta förvaltningsdomstolen" (HFD)
+ *   "kammarrätt"     → "Kammarrätten i Göteborg"
+ *   "högsta domstolen" → "Högsta domstolen" (HD) — needle includes
+ *                        "högsta" so e.g. "Arbetsdomstolen" / "Marknads-
+ *                        domstolen" don't false-positive.
+ */
+const COURT_PATTERNS: readonly string[] = [
+  'tingsrätt',
+  'hovrätt',
+  'förvaltningsrätt',
+  'förvaltningsdomstolen',
+  'kammarrätt',
+  'högsta domstolen',
+];
+
+/**
+ * Is this recipient (typically the first address line) a court? Uses
+ * loose Swedish substring matching so legacy/typed variants
+ * ("tingsratten", "TINGSRÄTT", NFD diacritics) all match.
+ *
+ * Per the firm's billing convention, courts receive the kostnadsräkning
+ * via email, so we render `firstLine + "via e-post"` and drop the
+ * postal address. Non-courts keep the full block.
+ */
+export function isCourtRecipient(firstLine: string): boolean {
+  const trimmed = firstLine.trim();
+  if (trimmed.length === 0) return false;
+  return COURT_PATTERNS.some((pattern) => swedishLooseContains(trimmed, pattern));
 }
