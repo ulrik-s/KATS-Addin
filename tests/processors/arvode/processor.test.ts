@@ -4,11 +4,13 @@ import { tagName } from '../../../src/core/processor.js';
 import { type Discovery, MapProcessorRegistry, runPipeline } from '../../../src/core/pipeline.js';
 import { type CategoryHours } from '../../../src/processors/argrupper-tider/schema.js';
 import { setArgrupperState } from '../../../src/processors/argrupper-tider/state.js';
+import { setMottagareState } from '../../../src/processors/mottagare/state.js';
 import { FakeTableKatsRange } from '../../../src/io/fake-kats-table.js';
 import {
   ArvodeProcessor,
   computeArvode,
   getArvodeExMomsFromContext,
+  getRoundingModeFromContext,
   type ArvodeRead,
 } from '../../../src/processors/arvode/index.js';
 
@@ -424,6 +426,125 @@ describe('computeArvode — utlaggExMomsKr cross-processor input', () => {
       (p) => p.row === 5 && p.col === 1 && p.paragraphs.length === 0,
     );
     expect(utlaggSpec).toBeDefined();
+  });
+});
+
+describe('getRoundingModeFromContext — derived from MOTTAGARE.isCourt', () => {
+  // Per firm policy: the rounding-mode choice is no longer user-facing.
+  // It is fully determined by who the recipient is:
+  //   court (tingsrätt, hovrätt, etc.) → 'per-row'  (legacy court method)
+  //   non-court                       → 'sum-only' (whole-kr-only total)
+  // When MOTTAGARE didn't run, fall back to the safe court default.
+
+  function mottagareWith(isCourt: boolean): {
+    firstLine: string;
+    postort: string;
+    addressLines: string[];
+    isCourt: boolean;
+  } {
+    return {
+      firstLine: isCourt ? 'Tingsrätten i Malmö' : 'Kronofogden',
+      postort: 'Malmö',
+      addressLines: [isCourt ? 'Tingsrätten i Malmö' : 'Kronofogden'],
+      isCourt,
+    };
+  }
+
+  it('court recipient → per-row', () => {
+    const ctx = new KatsContext();
+    setMottagareState(ctx, mottagareWith(true));
+    expect(getRoundingModeFromContext(ctx)).toBe('per-row');
+  });
+
+  it('non-court recipient → sum-only', () => {
+    const ctx = new KatsContext();
+    setMottagareState(ctx, mottagareWith(false));
+    expect(getRoundingModeFromContext(ctx)).toBe('sum-only');
+  });
+
+  it('no MOTTAGARE state in ctx → per-row (safe default)', () => {
+    expect(getRoundingModeFromContext(new KatsContext())).toBe('per-row');
+  });
+});
+
+describe('ArvodeProcessor — picks rounding mode from MOTTAGARE.isCourt', () => {
+  // End-to-end through the processor: setting isCourt on MOTTAGARE
+  // state must steer the rendered amounts. Per-row gives whole-kr per
+  // line and per-line rounding errors propagate to the total;
+  // sum-only keeps fractional kr per line and rounds only the total.
+
+  it('court → per-row produces integer per-row amounts', async () => {
+    const registry = new MapProcessorRegistry();
+    registry.register(new ArvodeProcessor());
+
+    const ctx = new KatsContext();
+    setMottagareState(ctx, {
+      firstLine: 'Tingsrätten i Lund',
+      postort: 'Lund',
+      addressLines: ['Tingsrätten i Lund'],
+      isCourt: true,
+    });
+    setArgrupperState(ctx, {
+      hours: { ...ZERO_HOURS, arvode: 1.55 }, // 1.55 × 850 = 1317.5 → 1318 (per-row)
+      isTaxemal: false,
+      patches: [],
+      warnings: [],
+    });
+
+    const range = arvodeTable(STD_TABLE);
+    await runPipeline([{ tag: tagName('KATS_ARVODE'), range }], registry, ctx);
+
+    const snap = range.snapshot();
+    // Find the arvode row (first remaining after deletions, after header).
+    const arvodeAmtCell = snap[1]?.[2]?.join('') ?? '';
+    expect(arvodeAmtCell).toBe('1 318,00 kr'); // per-row rounded to whole kr
+  });
+
+  it('non-court → sum-only keeps fractional kr per row', async () => {
+    const registry = new MapProcessorRegistry();
+    registry.register(new ArvodeProcessor());
+
+    const ctx = new KatsContext();
+    setMottagareState(ctx, {
+      firstLine: 'Kronofogden',
+      postort: 'Sundbyberg',
+      addressLines: ['Kronofogden', 'Box 1050', '172 21 Sundbyberg'],
+      isCourt: false,
+    });
+    setArgrupperState(ctx, {
+      hours: { ...ZERO_HOURS, arvode: 1.55 }, // 1.55 × 850 = 1317.5 → 1317,50 (sum-only)
+      isTaxemal: false,
+      patches: [],
+      warnings: [],
+    });
+
+    const range = arvodeTable(STD_TABLE);
+    await runPipeline([{ tag: tagName('KATS_ARVODE'), range }], registry, ctx);
+
+    const snap = range.snapshot();
+    const arvodeAmtCell = snap[1]?.[2]?.join('') ?? '';
+    expect(arvodeAmtCell).toBe('1 317,50 kr'); // sum-only keeps the half-kr precision
+  });
+
+  it('no MOTTAGARE state → safe default per-row (legacy)', async () => {
+    const registry = new MapProcessorRegistry();
+    registry.register(new ArvodeProcessor());
+
+    const ctx = new KatsContext();
+    // No setMottagareState call.
+    setArgrupperState(ctx, {
+      hours: { ...ZERO_HOURS, arvode: 1.55 },
+      isTaxemal: false,
+      patches: [],
+      warnings: [],
+    });
+
+    const range = arvodeTable(STD_TABLE);
+    await runPipeline([{ tag: tagName('KATS_ARVODE'), range }], registry, ctx);
+
+    const snap = range.snapshot();
+    const arvodeAmtCell = snap[1]?.[2]?.join('') ?? '';
+    expect(arvodeAmtCell).toBe('1 318,00 kr'); // per-row default
   });
 });
 
