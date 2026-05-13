@@ -70,8 +70,8 @@ describe('MottagareProcessor — read', () => {
   });
 });
 
-describe('MottagareProcessor — render', () => {
-  it('overwrites the address cell with firstLine + "via e-post"', async () => {
+describe('MottagareProcessor — render (court vs non-court branching)', () => {
+  it('court recipient: collapses to firstLine + "via e-post"', async () => {
     const p = new MottagareProcessor();
     const ctx = new KatsContext();
     const range = tableWithAddress(['Tingsrätten i Malmö', 'Box 847', '201 24 Malmö']);
@@ -84,11 +84,93 @@ describe('MottagareProcessor — render', () => {
     expect(snapshot[0]?.[1]).toEqual(['Tingsrätten i Malmö', 'via e-post']);
   });
 
+  it('hovrätt recipient: also collapses to firstLine + "via e-post"', async () => {
+    const p = new MottagareProcessor();
+    const ctx = new KatsContext();
+    const range = tableWithAddress([
+      'Hovrätten över Skåne och Blekinge',
+      'Box 846',
+      '201 80 Malmö',
+    ]);
+    await p.read(range, ctx);
+    p.transform(ctx);
+    await p.render(range, ctx);
+
+    expect(range.snapshot()[0]?.[1]).toEqual(['Hovrätten över Skåne och Blekinge', 'via e-post']);
+  });
+
+  it('non-court (Kronofogden): keeps the full address block unchanged', async () => {
+    const p = new MottagareProcessor();
+    const ctx = new KatsContext();
+    const range = tableWithAddress(['Kronofogden', 'Box 1050', '172 21 Sundbyberg']);
+    await p.read(range, ctx);
+    p.transform(ctx);
+    await p.render(range, ctx);
+
+    expect(range.snapshot()[0]?.[1]).toEqual(['Kronofogden', 'Box 1050', '172 21 Sundbyberg']);
+  });
+
+  it('non-court (Hyresnämnden) without postcode: keeps both lines', async () => {
+    const p = new MottagareProcessor();
+    const ctx = new KatsContext();
+    const range = tableWithAddress(['Hyresnämnden i Lund', 'attn. ordföranden']);
+    await p.read(range, ctx);
+    p.transform(ctx);
+    await p.render(range, ctx);
+
+    expect(range.snapshot()[0]?.[1]).toEqual(['Hyresnämnden i Lund', 'attn. ordföranden']);
+  });
+
+  it('non-court single-line recipient: keeps the single line', async () => {
+    const p = new MottagareProcessor();
+    const ctx = new KatsContext();
+    const range = tableWithAddress(['Sjölin AB']);
+    await p.read(range, ctx);
+    p.transform(ctx);
+    await p.render(range, ctx);
+
+    expect(range.snapshot()[0]?.[1]).toEqual(['Sjölin AB']);
+  });
+
+  it('court recipient with diacritic-stripped name still collapses', async () => {
+    // Legacy doc with "Tingsratten" (no ä) — loose match should fire.
+    const p = new MottagareProcessor();
+    const ctx = new KatsContext();
+    const range = tableWithAddress(['Tingsratten i Lund', 'Box 75', '221 00 Lund']);
+    await p.read(range, ctx);
+    p.transform(ctx);
+    await p.render(range, ctx);
+
+    expect(range.snapshot()[0]?.[1]).toEqual(['Tingsratten i Lund', 'via e-post']);
+  });
+
   it('render throws if read did not run first', async () => {
     const p = new MottagareProcessor();
     const ctx = new KatsContext();
     const range = tableWithAddress(['x']);
     await expect(p.render(range, ctx)).rejects.toBeDefined();
+  });
+});
+
+describe('MottagareProcessor — state shape (isCourt + addressLines)', () => {
+  it('exposes isCourt=true and full addressLines on the state', async () => {
+    const p = new MottagareProcessor();
+    const ctx = new KatsContext();
+    const range = tableWithAddress(['Tingsrätten i Malmö', 'Box 847', '201 24 Malmö']);
+    await p.read(range, ctx);
+    const state = requireMottagareState(ctx);
+    expect(state.isCourt).toBe(true);
+    expect(state.addressLines).toEqual(['Tingsrätten i Malmö', 'Box 847', '201 24 Malmö']);
+  });
+
+  it('exposes isCourt=false for non-courts', async () => {
+    const p = new MottagareProcessor();
+    const ctx = new KatsContext();
+    const range = tableWithAddress(['Kronofogden', 'Box 1050', '172 21 Sundbyberg']);
+    await p.read(range, ctx);
+    const state = requireMottagareState(ctx);
+    expect(state.isCourt).toBe(false);
+    expect(state.addressLines).toEqual(['Kronofogden', 'Box 1050', '172 21 Sundbyberg']);
   });
 });
 
@@ -119,7 +201,7 @@ describe('MottagareProcessor — context surface for downstream processors', () 
 });
 
 describe('MottagareProcessor — pipeline integration', () => {
-  it('runs end-to-end inside runPipeline', async () => {
+  it('non-court runs end-to-end and preserves the full address', async () => {
     const registry = new MapProcessorRegistry();
     registry.register(new MottagareProcessor());
 
@@ -130,6 +212,19 @@ describe('MottagareProcessor — pipeline integration', () => {
     await runPipeline(discoveries, registry, ctx);
 
     expect(requireMottagareState(ctx).postort).toBe('Sundbyberg');
-    expect(range.snapshot()[0]?.[1]).toEqual(['Kronofogden', 'via e-post']);
+    expect(range.snapshot()[0]?.[1]).toEqual(['Kronofogden', 'Box 1050', '172 21 Sundbyberg']);
+  });
+
+  it('court runs end-to-end and collapses to firstLine + "via e-post"', async () => {
+    const registry = new MapProcessorRegistry();
+    registry.register(new MottagareProcessor());
+
+    const range = tableWithAddress(['Tingsrätten i Malmö', 'Box 847', '201 24 Malmö']);
+    const ctx = new KatsContext();
+    const discoveries: Discovery[] = [{ tag: tagName('KATS_MOTTAGARE'), range }];
+
+    await runPipeline(discoveries, registry, ctx);
+
+    expect(range.snapshot()[0]?.[1]).toEqual(['Tingsrätten i Malmö', 'via e-post']);
   });
 });

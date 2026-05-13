@@ -64,7 +64,12 @@ describe('SignaturProcessor — phase semantics', () => {
   it('transform prefers postort from context (set by MOTTAGARE)', () => {
     const p = makeProcessor();
     const ctx = new KatsContext();
-    setMottagareState(ctx, { firstLine: 'Domstol', postort: 'Malmö' });
+    setMottagareState(ctx, {
+      firstLine: 'Domstol',
+      postort: 'Malmö',
+      addressLines: ['Domstol'],
+      isCourt: false,
+    });
     p.transform(ctx);
     expect(requireSignaturState(ctx).paragraphs[0]).toBe('Malmö den 24 april 2026');
   });
@@ -72,7 +77,12 @@ describe('SignaturProcessor — phase semantics', () => {
   it('transform falls back to user.city when MOTTAGARE set empty postort', () => {
     const p = makeProcessor();
     const ctx = new KatsContext();
-    setMottagareState(ctx, { firstLine: 'Någon', postort: '' });
+    setMottagareState(ctx, {
+      firstLine: 'Någon',
+      postort: '',
+      addressLines: ['Någon'],
+      isCourt: false,
+    });
     p.transform(ctx);
     expect(requireSignaturState(ctx).paragraphs[0]).toBe('Utopia den 24 april 2026');
   });
