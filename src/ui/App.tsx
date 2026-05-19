@@ -89,12 +89,15 @@ export function App(): JSX.Element {
     }
   }
 
-  function onMailDebug(): void {
+  async function onMailDebug(): Promise<void> {
+    setStatus({ kind: 'busy', message: 'Hämtar dokumentet…' });
     try {
-      mailDebugDocument();
+      await mailDebugDocument();
       setStatus({
         kind: 'success',
-        message: 'Felrapport öppnad i e-postklienten — bifoga gärna originaldokumentet.',
+        message:
+          'Dokumentet har laddats ned till din nedladdningsmapp och ' +
+          'mailutkast öppnats. Bifoga den nedladdade .docx-filen i mailet.',
       });
     } catch (cause) {
       const message = formatError(cause);
@@ -143,7 +146,9 @@ export function App(): JSX.Element {
         </button>
         <button
           className="kats-button kats-button-secondary"
-          onClick={onMailDebug}
+          onClick={() => {
+            void onMailDebug();
+          }}
           disabled={status.kind === 'busy'}
         >
           Maila tmp dokument
