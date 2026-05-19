@@ -95,41 +95,84 @@ describe('computeArgrupper — taxemål detection + hearing time', () => {
     expect(state.hearingMinutes).toBe(180);
   });
 
-  it('does NOT overwrite the hearing row hours cell — only captures state', () => {
-    // Hearing duration is propagated via state.hearingMinutes for the
-    // taxa lookup in ARVODE; the row's hours cell stays whatever the
-    // user wrote (or empty). Overwriting it caused bugs when the
-    // hearing date was in the future (elapsedMinutesClamped → 0)
-    // or far in the past (clamped to 24h regardless of actual duration).
+  it('writes the computed elapsed time back to the hearing row hours cell', () => {
+    // Per user request: "Medverkat vid förhandling från kl XX" → look
+    // up the time and compute elapsed from start to NOW, write into
+    // the column.
     const state = computeArgrupper({ read: makeReadFromRows(HEARING_TABLE), now: NOW });
-    const hearingRowHoursPatch = state.patches.find(
-      (p) => p.row === 2 && p.col === 2 && p.paragraphs.length > 0,
-    );
-    expect(hearingRowHoursPatch).toBeUndefined();
+    // start = today 09:00, now = today 12:00 → 3 hours.
+    expect(state.patches).toContainEqual({ row: 2, col: 2, paragraphs: ['3,00'] });
   });
 
-  it('does NOT write "0,00" when hearing date is in the future', () => {
-    // Repro for the user-reported bug: drafting a doc for an upcoming
-    // hearing > 24h away. Pre-fix elapsedMinutesClamped returned 0 and
-    // the system wrote "0,00" over the user's value.
-    const futureHearing: readonly (readonly string[])[] = [
+  it("uses today (NOW's calendar date) as the hearing base date — ignores col 0", () => {
+    // Bug repro: row date column held a future date (drafting a doc
+    // for an upcoming hearing). Pre-fix elapsedMinutesClamped wrapped
+    // to a value > 1440 and bottomed out at 0 → cell got "0,00".
+    // Fix: always use NOW's date as the hearing base; col 0 is for
+    // section-membership only, not for the time calc.
+    const futureRowDate: readonly (readonly string[])[] = [
       ['Datum', 'Beskr', 'Antal', 'Belopp'],
       ['Arvode', '', '', ''],
-      ['2026-06-15', 'medverkat vid förhandling från kl 09.00', '2,10'],
+      ['2026-06-15', 'medverkat vid förhandling från kl 09.00', ''],
       ['Summa', '', '', ''],
     ];
-    const state = computeArgrupper({ read: makeReadFromRows(futureHearing), now: NOW });
-    // Find any patch on the hearing row's hours cell.
-    const hoursPatches = state.patches.filter(
-      (p) => p.row === 2 && p.col === 2 && p.paragraphs.length > 0,
-    );
-    // The only acceptable patches are normalization of the user's value
-    // (e.g. "2,10"); nothing should write "0,00" there.
+    const state = computeArgrupper({ read: makeReadFromRows(futureRowDate), now: NOW });
+    // NOW = 2026-04-25 12:00 → today 09:00 to 12:00 = 3 hours.
+    expect(state.patches).toContainEqual({ row: 2, col: 2, paragraphs: ['3,00'] });
+    // And the patched value flows into the section sum.
+    expect(state.hours.arvode).toBe(3);
+  });
+
+  it('does NOT write "0,00" when NOW is before the hearing time today (hearing not yet)', () => {
+    // If the user processes the doc BEFORE the hearing start time of
+    // day, the calc is genuinely 0. Writing "0,00" into the cell is
+    // misleading — leave the user's cell alone and let the 0-hour
+    // warning surface the issue.
+    const morningNow = new Date(2026, 3, 25, 8, 0); // 08:00, before 09:00
+    const sameDayHearing: readonly (readonly string[])[] = [
+      ['Datum', 'Beskr', 'Antal', 'Belopp'],
+      ['Arvode', '', '', ''],
+      ['2026-04-25', 'medverkat vid förhandling från kl 09.00', ''],
+      ['Summa', '', '', ''],
+    ];
+    const state = computeArgrupper({
+      read: makeReadFromRows(sameDayHearing),
+      now: morningNow,
+    });
+    const hoursPatches = state.patches.filter((p) => p.row === 2 && p.col === 2);
     for (const p of hoursPatches) {
       expect(p.paragraphs).not.toEqual(['0,00']);
     }
-    // And the user's value is preserved in the snapshot read.
-    expect(state.hours.arvode).toBe(2.1);
+  });
+
+  it('hearing patch overrides a user-typed value in the same cell', () => {
+    // Explicit per user spec: "skriv in den tiden i kolumnen". The
+    // description "Medverkat vid förhandling från kl XX" is the
+    // signal that the user wants the auto-calc; manually-typed hours
+    // get replaced.
+    const userTyped: readonly (readonly string[])[] = [
+      ['Datum', 'Beskr', 'Antal', 'Belopp'],
+      ['Arvode', '', '', ''],
+      ['2026-04-25', 'medverkat vid förhandling från kl 09.00', '2,10'],
+      ['Summa', '', '', ''],
+    ];
+    const state = computeArgrupper({ read: makeReadFromRows(userTyped), now: NOW });
+    expect(state.patches).toContainEqual({ row: 2, col: 2, paragraphs: ['3,00'] });
+    expect(state.hours.arvode).toBe(3); // override flows into sum
+  });
+
+  it('hearing-row 0-hour warning does NOT fire when patch produces > 0', () => {
+    // A row with an empty hours cell that gets patched with the
+    // hearing-elapsed value (3 h) should not also trigger the 0-hour
+    // warning — the effective hours are 3, not 0.
+    const sameDayHearing: readonly (readonly string[])[] = [
+      ['Datum', 'Beskr', 'Antal', 'Belopp'],
+      ['Arvode', '', '', ''],
+      ['2026-04-25', 'medverkat vid förhandling från kl 09.00', ''],
+      ['Summa', '', '', ''],
+    ];
+    const state = computeArgrupper({ read: makeReadFromRows(sameDayHearing), now: NOW });
+    expect(state.warnings).toEqual([]);
   });
 
   it('matches diacritic-stripped legacy hearing text', () => {

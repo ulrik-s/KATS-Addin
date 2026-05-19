@@ -103,14 +103,22 @@ describe('elapsedMinutesClamped', () => {
     expect(elapsedMinutesClamped(start, now)).toBe(150);
   });
 
-  it('wraps to 24h when now is before start (drafted ahead-of-time)', () => {
+  it('returns 0 when now is before start (hearing not yet)', () => {
+    // Callers (argrupper-tider) interpret 0 as "hearing has not
+    // happened yet today" and skip the cell-patch — better than the
+    // previous +24h wraparound which silently turned 'before start'
+    // into 'almost 24h elapsed'.
     const start = new Date(2026, 3, 25, 14, 0);
-    const now = new Date(2026, 3, 25, 13, 0); // 1 hour earlier
-    // 24*60 - 60 = 1380
-    expect(elapsedMinutesClamped(start, now)).toBe(23 * 60);
+    const now = new Date(2026, 3, 25, 13, 0);
+    expect(elapsedMinutesClamped(start, now)).toBe(0);
   });
 
-  it('clamps very large windows to 1440', () => {
+  it('returns 0 when now is the same instant as start', () => {
+    const t = new Date(2026, 3, 25, 9, 0);
+    expect(elapsedMinutesClamped(t, t)).toBe(0);
+  });
+
+  it('clamps very large positive windows to 1440', () => {
     const start = new Date(2026, 3, 1, 9, 0);
     const now = new Date(2026, 3, 25, 9, 0);
     expect(elapsedMinutesClamped(start, now)).toBe(24 * 60);

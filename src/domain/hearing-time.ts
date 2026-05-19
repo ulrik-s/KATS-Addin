@@ -54,13 +54,19 @@ export function extractHearingTime(text: string): HearingTime | undefined {
 /**
  * Minutes elapsed from `start` to `now`, clamped to 0..1440.
  *
- * If `now` is before `start` (e.g. drafting tomorrow's hearing today),
- * VBA wraps by adding 24×60. Same here for parity.
+ *   now < start  → 0  (hearing has not happened yet — callers
+ *                       interpret this as "skip the auto-fill")
+ *   now ≥ start  → min(diff, 1440)
+ *
+ * No +24h wraparound (the previous VBA-parity behavior). The old
+ * wraparound silently turned "drafting before the hearing" into
+ * "almost 24h elapsed", and when combined with a future row-date in
+ * argrupper, bottomed out at 0 — the visible bug being "Medverkat
+ * vid förhandling från kl 09.00 gives 0,00".
  */
 export function elapsedMinutesClamped(start: Date, now: Date): number {
-  let diff = Math.floor((now.getTime() - start.getTime()) / 60000);
-  if (diff < 0) diff += 24 * 60;
-  if (diff < 0) return 0;
+  const diff = Math.floor((now.getTime() - start.getTime()) / 60000);
+  if (diff <= 0) return 0;
   if (diff > 24 * 60) return 24 * 60;
   return diff;
 }
