@@ -57,7 +57,7 @@ export function computeArgrupper(input: ComputeArgrupperInput): ArgrupperState {
   const isTaxemal = cells.some((row) => row.some((cell) => isTaxaHearingLine(cell.join('\r'))));
 
   // 2. Hearing time capture.
-  const hearing = captureHearingStart(cells, input.now, patches);
+  const hearing = captureHearingStart(cells, input.now);
 
   // 3. Per-category hour sums + summary patches.
   const hours = computeAllCategoryHours(cells, patches, warnings);
@@ -99,11 +99,8 @@ interface HearingResult {
 function captureHearingStart(
   cells: readonly (readonly (readonly string[])[])[],
   now: Date,
-  patches: CellPatch[],
 ): HearingResult {
-  for (let r = 0; r < cells.length; r += 1) {
-    const row = cells[r];
-    if (!row) continue;
+  for (const row of cells) {
     for (const cell of row) {
       const text = cell.join('\r');
       const time = extractHearingTime(text);
@@ -117,12 +114,13 @@ function captureHearingStart(
       const start = combineDateAndTime(baseDate, time);
       const minutes = elapsedMinutesClamped(start, now);
 
-      // Write computed hours back to col 2 of this row.
-      patches.push({
-        row: r,
-        col: ARGRUPPER_HOURS_COL,
-        paragraphs: [formatSvDecimal(minutes / 60, 2)],
-      });
+      // No patch on the row's hours cell. Pre-fix this was a "helpful"
+      // overwrite that backfired: for hearings dated in the future
+      // elapsedMinutesClamped returns 0 (the wrap-around bottoms out
+      // beyond 24h), and for hearings far in the past it saturates at
+      // 24h regardless of actual duration. The taxa path in ARVODE
+      // reads hearingMinutes from state directly, so the cell-level
+      // patch was never load-bearing — only misleading.
       return { start, minutes };
     }
   }
@@ -173,21 +171,31 @@ function computeSectionHours(
   pushLabelRewriteIfNeeded(cells, summaryRow, ARGRUPPER_SUMMARY_LABEL, patches);
 
   let sum = 0;
+  const zeroHourDates: string[] = [];
   for (let r = headingRow + 1; r < summaryRow; r += 1) {
     const dateText = cellText(cells, r, 0);
     if (!looksLikeIsoDate(dateText)) continue;
     const hours = svToNumber(cellText(cells, r, ARGRUPPER_HOURS_COL));
     sum += hours;
-    // Normalize the hours cell to canonical Swedish format. The user
-    // may have typed "0.75" (English period decimal); we render as
-    // "0,75" so the document is monolingual.
-    if (hours !== 0) {
+    if (hours === 0) {
+      // Flag the date for a section-level "missing hours" warning at
+      // the end of the loop. A 0-hour data row is almost always an
+      // input error — forgotten field, parser confused by an exotic
+      // separator, etc.
+      zeroHourDates.push(dateText.trim());
+    } else {
+      // Normalize the hours cell to canonical Swedish format. The user
+      // may have typed "0.75" (English period decimal); we render as
+      // "0,75" so the document is monolingual.
       patches.push({
         row: r,
         col: ARGRUPPER_HOURS_COL,
         paragraphs: [formatSvDecimal(hours, HOURS_DECIMALS)],
       });
     }
+  }
+  if (zeroHourDates.length > 0) {
+    warnings.push(buildZeroHoursWarning(section, zeroHourDates));
   }
   const rounded = roundToDecimals(sum, HOURS_DECIMALS);
   patches.push({
@@ -196,6 +204,20 @@ function computeSectionHours(
     paragraphs: [formatSvDecimal(rounded, HOURS_DECIMALS)],
   });
   return rounded;
+}
+
+/**
+ * Build the user-facing warning for a section whose data rows
+ * contained one or more 0-hour entries. Single source of truth so
+ * every section (Arvode, Tidsspillan, …) phrases the warning the
+ * same way.
+ */
+function buildZeroHoursWarning(section: LabelSpec, dates: readonly string[]): string {
+  const noun = dates.length === 1 ? 'post' : 'poster';
+  return (
+    `ARGRUPPER (${labelPrimary(section)}): ${String(dates.length)} ${noun} med 0,00 timmar ` +
+    `— kontrollera ${dates.join(', ')}.`
+  );
 }
 
 /**
