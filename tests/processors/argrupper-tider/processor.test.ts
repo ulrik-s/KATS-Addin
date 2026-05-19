@@ -95,10 +95,41 @@ describe('computeArgrupper — taxemål detection + hearing time', () => {
     expect(state.hearingMinutes).toBe(180);
   });
 
-  it('writes computed hours back to the hearing row col 2', () => {
+  it('does NOT overwrite the hearing row hours cell — only captures state', () => {
+    // Hearing duration is propagated via state.hearingMinutes for the
+    // taxa lookup in ARVODE; the row's hours cell stays whatever the
+    // user wrote (or empty). Overwriting it caused bugs when the
+    // hearing date was in the future (elapsedMinutesClamped → 0)
+    // or far in the past (clamped to 24h regardless of actual duration).
     const state = computeArgrupper({ read: makeReadFromRows(HEARING_TABLE), now: NOW });
-    const hearingPatch = state.patches.find((p) => p.row === 2 && p.col === 2);
-    expect(hearingPatch?.paragraphs).toEqual(['3,00']); // 180/60 = 3.00
+    const hearingRowHoursPatch = state.patches.find(
+      (p) => p.row === 2 && p.col === 2 && p.paragraphs.length > 0,
+    );
+    expect(hearingRowHoursPatch).toBeUndefined();
+  });
+
+  it('does NOT write "0,00" when hearing date is in the future', () => {
+    // Repro for the user-reported bug: drafting a doc for an upcoming
+    // hearing > 24h away. Pre-fix elapsedMinutesClamped returned 0 and
+    // the system wrote "0,00" over the user's value.
+    const futureHearing: readonly (readonly string[])[] = [
+      ['Datum', 'Beskr', 'Antal', 'Belopp'],
+      ['Arvode', '', '', ''],
+      ['2026-06-15', 'medverkat vid förhandling från kl 09.00', '2,10'],
+      ['Summa', '', '', ''],
+    ];
+    const state = computeArgrupper({ read: makeReadFromRows(futureHearing), now: NOW });
+    // Find any patch on the hearing row's hours cell.
+    const hoursPatches = state.patches.filter(
+      (p) => p.row === 2 && p.col === 2 && p.paragraphs.length > 0,
+    );
+    // The only acceptable patches are normalization of the user's value
+    // (e.g. "2,10"); nothing should write "0,00" there.
+    for (const p of hoursPatches) {
+      expect(p.paragraphs).not.toEqual(['0,00']);
+    }
+    // And the user's value is preserved in the snapshot read.
+    expect(state.hours.arvode).toBe(2.1);
   });
 
   it('matches diacritic-stripped legacy hearing text', () => {
@@ -383,6 +414,80 @@ describe('computeArgrupper — diagnostic warnings', () => {
     ];
     const state = computeArgrupper({ read: makeReadFromRows(partial), now: NOW });
     expect(state.warnings).toEqual([]);
+  });
+});
+
+describe('computeArgrupper — zero-hour row warnings', () => {
+  // Per user feedback: any data row with 0,00 hours signals a real
+  // problem (forgotten input, broken parsing, etc.). The transform
+  // should surface a warning naming the affected row(s).
+  it('warns when a data row has hours = 0', () => {
+    const zeroRow: readonly (readonly string[])[] = [
+      ['Datum', 'Beskr', 'Antal', 'Belopp'],
+      ['Arvode', '', '', ''],
+      ['2026-04-20', 'Granskning', '0,00', ''],
+      ['2026-04-21', 'Skrift', '1,50', ''],
+      ['Summa', '', '', ''],
+    ];
+    const state = computeArgrupper({ read: makeReadFromRows(zeroRow), now: NOW });
+    expect(state.warnings.some((w) => w.includes('2026-04-20'))).toBe(true);
+    expect(state.warnings.some((w) => w.includes('0') && w.includes('Arvode'))).toBe(true);
+  });
+
+  it('warns when a data row has empty hours cell', () => {
+    const emptyHours: readonly (readonly string[])[] = [
+      ['Datum', 'Beskr', 'Antal', 'Belopp'],
+      ['Arvode', '', '', ''],
+      ['2026-04-20', 'beskrivning utan timmar', '', ''],
+      ['Summa', '', '', ''],
+    ];
+    const state = computeArgrupper({ read: makeReadFromRows(emptyHours), now: NOW });
+    expect(state.warnings.some((w) => w.includes('2026-04-20'))).toBe(true);
+  });
+
+  it('lists every zero-hour row date in the same section warning', () => {
+    const multipleZeroes: readonly (readonly string[])[] = [
+      ['Datum', 'Beskr', 'Antal', 'Belopp'],
+      ['Arvode', '', '', ''],
+      ['2026-04-20', 'a', '', ''],
+      ['2026-04-21', 'b', '0,00', ''],
+      ['2026-04-22', 'c', '1,5', ''],
+      ['Summa', '', '', ''],
+    ];
+    const state = computeArgrupper({ read: makeReadFromRows(multipleZeroes), now: NOW });
+    const merged = state.warnings.join(' | ');
+    expect(merged).toContain('2026-04-20');
+    expect(merged).toContain('2026-04-21');
+    expect(merged).not.toContain('2026-04-22');
+  });
+
+  it('does NOT warn when all data rows have non-zero hours', () => {
+    const allFilled: readonly (readonly string[])[] = [
+      ['Datum', 'Beskr', 'Antal', 'Belopp'],
+      ['Arvode', '', '', ''],
+      ['2026-04-20', 'a', '1', ''],
+      ['2026-04-21', 'b', '2', ''],
+      ['Summa', '', '', ''],
+    ];
+    const state = computeArgrupper({ read: makeReadFromRows(allFilled), now: NOW });
+    expect(state.warnings).toEqual([]);
+  });
+
+  it('warns per section (Arvode + Tidsspillan independently)', () => {
+    const twoSections: readonly (readonly string[])[] = [
+      ['Datum', 'Beskr', 'Antal', 'Belopp'],
+      ['Arvode', '', '', ''],
+      ['2026-04-20', 'a', '0,00', ''],
+      ['Summa', '', '', ''],
+      ['Tidsspillan', '', '', ''],
+      ['2026-04-22', 'b', '', ''],
+      ['Summa', '', '', ''],
+    ];
+    const state = computeArgrupper({ read: makeReadFromRows(twoSections), now: NOW });
+    expect(state.warnings.some((w) => w.includes('Arvode') && w.includes('2026-04-20'))).toBe(true);
+    expect(state.warnings.some((w) => w.includes('Tidsspillan') && w.includes('2026-04-22'))).toBe(
+      true,
+    );
   });
 });
 
