@@ -10,7 +10,7 @@ import { KATS_ADDIN_VERSION } from '../index.js';
  * draft. That mirrors the legacy VBA behavior, which on macOS used
  * AppleScript to script Outlook — Office add-ins can't do that.
  */
-const RECIPIENT = 'ulrik@mga.se';
+const RECIPIENT = 'ulrik.sjolin@gmail.com';
 const SUBJECT = 'KATS — felaktigt processat dokument';
 const BODY_TEMPLATE =
   'Hej,\n\nKATS-tillägget hanterade följande dokument felaktigt. ' +
