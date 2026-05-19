@@ -4,7 +4,7 @@ import {
   extractHearingTime,
   isTaxaHearingLine,
 } from '../../domain/hearing-time.js';
-import { looksLikeIsoDate, parseIsoDate } from '../../domain/iso-date.js';
+import { looksLikeIsoDate } from '../../domain/iso-date.js';
 import { formatSvDecimal, roundToDecimals, svToNumber } from '../../domain/money.js';
 import {
   type LabelSpec,
@@ -56,11 +56,24 @@ export function computeArgrupper(input: ComputeArgrupperInput): ArgrupperState {
   // 1. Tax case detection — any cell containing the regex.
   const isTaxemal = cells.some((row) => row.some((cell) => isTaxaHearingLine(cell.join('\r'))));
 
-  // 2. Hearing time capture.
+  // 2. Hearing time capture. Emit the cell-patch here (not inside the
+  //    capture helper) so we can also build the row→hours override map
+  //    that downstream section-sum + 0-hour-detection use to stay
+  //    consistent with what the user will actually see in the cell.
   const hearing = captureHearingStart(cells, input.now);
+  const hourOverrides = new Map<number, number>();
+  if (hearing.rowIndex !== undefined && hearing.minutes !== undefined && hearing.minutes > 0) {
+    const computedHours = roundToDecimals(hearing.minutes / 60, HOURS_DECIMALS);
+    hourOverrides.set(hearing.rowIndex, computedHours);
+    patches.push({
+      row: hearing.rowIndex,
+      col: ARGRUPPER_HOURS_COL,
+      paragraphs: [formatSvDecimal(computedHours, HOURS_DECIMALS)],
+    });
+  }
 
   // 3. Per-category hour sums + summary patches.
-  const hours = computeAllCategoryHours(cells, patches, warnings);
+  const hours = computeAllCategoryHours(cells, patches, warnings, hourOverrides);
 
   // 4. Clear "Ärende, total" row (first 3 columns).
   const totalRow = findArendeTotalRow(cells);
@@ -94,34 +107,41 @@ export function computeArgrupper(input: ComputeArgrupperInput): ArgrupperState {
 interface HearingResult {
   readonly start?: Date;
   readonly minutes?: number;
+  /** Row that contained the hearing line — populated only on a hit. */
+  readonly rowIndex?: number;
 }
 
+/**
+ * Find the first cell whose text matches the hearing-line regex
+ * (`Medverkat vid förhandling från kl XX(:YY)`) and return:
+ *
+ *   - `start`     = TODAY at HH:MM (NOW's calendar date — the row's
+ *                   own date column is intentionally ignored: "from
+ *                   kl XX till nu" semantically means same-day),
+ *   - `minutes`   = elapsed clock-minutes from `start` to `now`,
+ *                   clamped to [0, 1440],
+ *   - `rowIndex`  = the matched row, so callers can patch its hours
+ *                   cell with `minutes / 60`.
+ *
+ * `minutes === 0` means the hearing has not happened yet today; the
+ * caller skips the cell-patch (writing "0,00" would be misleading)
+ * and lets the 0-hour warning surface the missing input.
+ */
 function captureHearingStart(
   cells: readonly (readonly (readonly string[])[])[],
   now: Date,
 ): HearingResult {
-  for (const row of cells) {
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  for (let r = 0; r < cells.length; r += 1) {
+    const row = cells[r];
+    if (!row) continue;
     for (const cell of row) {
       const text = cell.join('\r');
       const time = extractHearingTime(text);
       if (!time) continue;
-
-      // Date column is 0; use today if absent or unparseable.
-      const dateText = row[0]?.join('\r') ?? '';
-      const baseDate = looksLikeIsoDate(dateText)
-        ? (parseIsoDate(dateText) ?? new Date(now.getFullYear(), now.getMonth(), now.getDate()))
-        : new Date(now.getFullYear(), now.getMonth(), now.getDate());
-      const start = combineDateAndTime(baseDate, time);
+      const start = combineDateAndTime(today, time);
       const minutes = elapsedMinutesClamped(start, now);
-
-      // No patch on the row's hours cell. Pre-fix this was a "helpful"
-      // overwrite that backfired: for hearings dated in the future
-      // elapsedMinutesClamped returns 0 (the wrap-around bottoms out
-      // beyond 24h), and for hearings far in the past it saturates at
-      // 24h regardless of actual duration. The taxa path in ARVODE
-      // reads hearingMinutes from state directly, so the cell-level
-      // patch was never load-bearing — only misleading.
-      return { start, minutes };
+      return { start, minutes, rowIndex: r };
     }
   }
   return {};
@@ -131,26 +151,33 @@ function computeAllCategoryHours(
   cells: readonly (readonly (readonly string[])[])[],
   patches: CellPatch[],
   warnings: string[],
+  hourOverrides: ReadonlyMap<number, number>,
 ): CategoryHours {
+  const args = { cells, patches, warnings, hourOverrides } as const;
   return {
-    arvode: computeSectionHours(cells, ARGRUPPER_SECTIONS.arvode, patches, warnings),
-    arvodeHelg: computeSectionHours(cells, ARGRUPPER_SECTIONS.arvodeHelg, patches, warnings),
-    tidsspillan: computeSectionHours(cells, ARGRUPPER_SECTIONS.tidsspillan, patches, warnings),
-    tidsspillanOvrigTid: computeSectionHours(
-      cells,
-      ARGRUPPER_SECTIONS.tidsspillanOvrigTid,
-      patches,
-      warnings,
-    ),
+    arvode: computeSectionHours(args, ARGRUPPER_SECTIONS.arvode),
+    arvodeHelg: computeSectionHours(args, ARGRUPPER_SECTIONS.arvodeHelg),
+    tidsspillan: computeSectionHours(args, ARGRUPPER_SECTIONS.tidsspillan),
+    tidsspillanOvrigTid: computeSectionHours(args, ARGRUPPER_SECTIONS.tidsspillanOvrigTid),
   };
 }
 
-function computeSectionHours(
-  cells: readonly (readonly (readonly string[])[])[],
-  section: LabelSpec,
-  patches: CellPatch[],
-  warnings: string[],
-): number {
+interface SectionContext {
+  readonly cells: readonly (readonly (readonly string[])[])[];
+  readonly patches: CellPatch[];
+  readonly warnings: string[];
+  /**
+   * Row → hours overrides that take precedence over the cell's parsed
+   * value when summing, detecting 0-hour rows, and deciding whether to
+   * emit a normalization patch. Populated upstream from hearing
+   * capture so the section logic stays consistent with what will
+   * actually render in the cell.
+   */
+  readonly hourOverrides: ReadonlyMap<number, number>;
+}
+
+function computeSectionHours(ctx: SectionContext, section: LabelSpec): number {
+  const { cells, patches, warnings, hourOverrides } = ctx;
   const headingRow = findHeadingRow(cells, section);
   if (headingRow < 0) return 0;
 
@@ -175,7 +202,14 @@ function computeSectionHours(
   for (let r = headingRow + 1; r < summaryRow; r += 1) {
     const dateText = cellText(cells, r, 0);
     if (!looksLikeIsoDate(dateText)) continue;
-    const hours = svToNumber(cellText(cells, r, ARGRUPPER_HOURS_COL));
+    // Effective hours = the value the user will actually see in the
+    // cell after render: either an upstream override (hearing-line
+    // auto-fill) or the parsed cell value. The override-patch is
+    // already in `patches`; we just need to use the same value here
+    // for the sum + 0-hour detection.
+    const override = hourOverrides.get(r);
+    const cellHours = svToNumber(cellText(cells, r, ARGRUPPER_HOURS_COL));
+    const hours = override ?? cellHours;
     sum += hours;
     if (hours === 0) {
       // Flag the date for a section-level "missing hours" warning at
@@ -183,10 +217,10 @@ function computeSectionHours(
       // input error — forgotten field, parser confused by an exotic
       // separator, etc.
       zeroHourDates.push(dateText.trim());
-    } else {
-      // Normalize the hours cell to canonical Swedish format. The user
-      // may have typed "0.75" (English period decimal); we render as
-      // "0,75" so the document is monolingual.
+    } else if (override === undefined) {
+      // Cell-source value: normalize the cell to canonical Swedish
+      // format. (Override-rows already had their patch pushed by the
+      // hearing-capture step.)
       patches.push({
         row: r,
         col: ARGRUPPER_HOURS_COL,
