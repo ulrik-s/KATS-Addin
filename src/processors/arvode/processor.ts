@@ -9,7 +9,13 @@ import {
 } from '../argrupper-tider/state.js';
 import { getUtlaggTotalsFromContext } from '../utlagg/state.js';
 import { ARVODE_ROW } from './schema.js';
-import { requireArvodeRead, requireArvodeState, setArvodeRead, setArvodeState } from './state.js';
+import {
+  getRoundingModeFromContext,
+  requireArvodeRead,
+  requireArvodeState,
+  setArvodeRead,
+  setArvodeState,
+} from './state.js';
 import { computeArvode } from './transform.js';
 
 const ARVODE_TAG: TagName = tagName('KATS_ARVODE');
@@ -18,11 +24,6 @@ const REQUIRED_ROWS = ARVODE_ROW.utlagg + 1;
 const REQUIRED_COLS = 3;
 
 export interface ArvodeDependencies {
-  /**
-   * Per-row (default, court-style) vs sum-only (round only the
-   * total, keep per-row exact). User-controlled from the task pane.
-   */
-  readonly getRoundingMode: () => 'per-row' | 'sum-only';
   /**
    * Per-category billable rates in kr/h. Returns undefined to fall
    * back to parsing the doc's spec cells (legacy / test path).
@@ -86,7 +87,9 @@ export class ArvodeProcessor implements Processor {
       tidsspillan: 0,
       tidsspillanOvrigTid: 0,
     };
-    const roundingMode = this.deps.getRoundingMode();
+    // Rounding policy is data-driven from the recipient (MOTTAGARE):
+    // court → per-row, non-court → sum-only. See state.ts for the rule.
+    const roundingMode = getRoundingModeFromContext(ctx);
     const rates = this.deps.getCategoryRatesKr();
     // Authoritative utlägg amount comes from the upstream UTLAGG
     // processor — the ARVODE table's UTLÄGG row should reflect that
@@ -119,9 +122,8 @@ export class ArvodeProcessor implements Processor {
   }
 }
 
-/** Backwards-compatible default: legacy court-mode behavior, doc-driven rates. */
+/** Backwards-compatible default: doc-driven rates (no override). */
 const DEFAULT_DEPS: ArvodeDependencies = {
-  getRoundingMode: () => 'per-row',
   getCategoryRatesKr: () => undefined,
 };
 

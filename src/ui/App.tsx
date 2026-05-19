@@ -8,10 +8,7 @@ import {
   type CategoryRates,
   DEFAULT_RATES,
   getCategoryRateRaw,
-  getRoundingMode,
   setCategoryRate,
-  setRoundingMode,
-  type RoundingMode,
 } from '../app/settings.js';
 import { LegacyUninstallHelp } from './LegacyUninstallHelp.js';
 
@@ -61,7 +58,6 @@ function readAllRates(): RatesState {
 export function App(): JSX.Element {
   const [status, setStatus] = useState<StatusState>({ kind: 'idle', message: '' });
   const [userKey, setUserKey] = useState<string>(getStoredUserKey() ?? '');
-  const [roundingMode, setRoundingModeState] = useState<RoundingMode>(getRoundingMode());
   const [rates, setRatesState] = useState<RatesState>(readAllRates);
 
   const allUsers = listAllUsers();
@@ -113,12 +109,6 @@ export function App(): JSX.Element {
     setStatus({ kind: 'info', message: `Aktiv användare satt till ${key}.` });
   }
 
-  function onRoundingChange(event: ChangeEvent<HTMLSelectElement>): void {
-    const mode = event.target.value === 'sum-only' ? 'sum-only' : 'per-row';
-    setRoundingModeState(mode);
-    setRoundingMode(mode);
-  }
-
   function makeRateChangeHandler(category: keyof CategoryRates) {
     return (event: ChangeEvent<HTMLInputElement>): void => {
       const value = event.target.value;
@@ -168,17 +158,6 @@ export function App(): JSX.Element {
             {u.fullName} ({u.shortName})
           </option>
         ))}
-      </select>
-
-      <label htmlFor="kats-rounding">Avrundning</label>
-      <select
-        id="kats-rounding"
-        value={roundingMode}
-        onChange={onRoundingChange}
-        style={SELECT_STYLE}
-      >
-        <option value="per-row">Per rad (domstol)</option>
-        <option value="sum-only">Endast på summa</option>
       </select>
 
       {RATE_FIELDS.map((field) => (

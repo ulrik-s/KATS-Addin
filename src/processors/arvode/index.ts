@@ -14,9 +14,11 @@ export {
   getArvodeExMomsFromContext,
   getArvodeRead,
   getArvodeState,
+  getRoundingModeFromContext,
   requireArvodeRead,
   requireArvodeState,
   setArvodeRead,
   setArvodeState,
+  type RoundingMode,
 } from './state.js';
 export { computeArvode, type ComputeArvodeInput } from './transform.js';

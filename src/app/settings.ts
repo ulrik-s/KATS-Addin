@@ -4,33 +4,12 @@ import { readStorage, writeStorage } from './storage.js';
  * User-controlled processor settings. Stored in localStorage so they
  * survive Word restarts; per-add-in scope means firm members can
  * each have their own without conflicting.
- */
-
-const ROUNDING_KEY = 'kats:roundingMode';
-
-/**
- * Two policies for ARVODE per-row rounding:
  *
- *   "per-row"  — court documents (tingsrätt / hovrätt). Each row's
- *                amount is rounded to whole kr before summing. Total
- *                = sum of rounded rows. Matches the legacy VBA
- *                behavior; default for the firm.
- *   "sum-only" — non-court documents. Per-row amounts kept exact
- *                (potentially fractional kr). Total computed exact
- *                then rounded to whole kr at the end.
+ * The ARVODE rounding mode used to live here as a user-facing
+ * preference. It is now derived from the recipient (court vs
+ * non-court) in `processors/arvode/state.ts:getRoundingModeFromContext`.
+ * See that function for the rule.
  */
-export type RoundingMode = 'per-row' | 'sum-only';
-
-export const DEFAULT_ROUNDING_MODE: RoundingMode = 'per-row';
-
-export function getRoundingMode(): RoundingMode {
-  const v = readStorage(ROUNDING_KEY);
-  return v === 'sum-only' ? 'sum-only' : DEFAULT_ROUNDING_MODE;
-}
-
-export function setRoundingMode(mode: RoundingMode): void {
-  writeStorage(ROUNDING_KEY, mode);
-}
 
 // ──────────────────────── Category rates ──────────────────────
 
