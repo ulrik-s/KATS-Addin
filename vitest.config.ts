@@ -20,7 +20,42 @@ export default defineConfig({
       provider: 'v8',
       reporter: ['text', 'html', 'lcov'],
       include: ['src/**/*.ts'],
-      exclude: ['src/**/*.test.ts', 'src/**/index.ts'],
+      exclude: [
+        'src/**/*.test.ts',
+        'src/**/index.ts',
+        // Adapter & UI layers depend on Office.js / browser DOM and
+        // need an integration harness to exercise. Excluded from the
+        // floor so the floor reflects pure-logic coverage only.
+        'src/adapters/**',
+        'src/ui/**',
+        'src/app/orchestrator.ts',
+        'src/app/storage.ts',
+        'src/app/headers-footers/**',
+        'src/index.ts',
+      ],
+      // Floors are scoped narrowly so adding new domain logic without
+      // tests fails CI immediately. Raise these over time as coverage
+      // climbs. See CLAUDE.md → "Test discipline".
+      thresholds: {
+        'src/domain/**': {
+          statements: 95,
+          lines: 95,
+          branches: 90,
+          functions: 95,
+        },
+        'src/core/**': {
+          statements: 90,
+          lines: 90,
+          branches: 85,
+          functions: 90,
+        },
+        'src/processors/**/transform.ts': {
+          statements: 95,
+          lines: 95,
+          branches: 85,
+          functions: 95,
+        },
+      },
     },
   },
 });
