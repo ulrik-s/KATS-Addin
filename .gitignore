@@ -39,3 +39,7 @@ Thumbs.db
 .env
 .env.local
 .env.*.local
+
+# Mutation testing artifacts (Stryker)
+reports/
+.stryker-tmp/

@@ -12,6 +12,8 @@ export default defineConfig([
     'dist/**',
     'build/**',
     'coverage/**',
+    'reports/**',
+    '.stryker-tmp/**',
     'scripts/**',
   ]),
   {

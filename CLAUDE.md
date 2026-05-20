@@ -9,6 +9,32 @@ TypeScript Office Add-in for Word. Replaces the legacy VBA-based KATS-Tools (`.d
 - **zod at I/O boundaries.** All processor state slices, the user DB, and any external data shapes are defined via `z.object(...)` and `z.infer`.
 - **DRY + SOLID.** Small single-responsibility modules. No processor reaches into another; cross-processor data flows only through `KatsContext`.
 - **ESLint must pass** with zero warnings. Prettier enforces formatting.
+- **Coverage floor.** `domain/` must stay ≥95% statements/lines, ≥90% branches. Enforced by vitest thresholds in `vitest.config.ts` and run as part of `yarn check`.
+
+## Test discipline
+
+### Boundary checklist (any function with `clamp` / `wrap` / `Math.min` / `Math.max`)
+
+Real-world bugs hide _outside_ the design envelope. For every clamp or wraparound, write tests for:
+
+1. **Inside the range** — the expected happy path.
+2. **At each boundary** — exactly equal to the clamp value, off-by-one on both sides.
+3. **Far outside the range, both directions** — input that exceeds the wraparound's compensation. The classic 0,00 hearing-time bug (PR #7) lived in this quadrant: the `+24h` wraparound was tested for "1h before start" but never for "30 days before start".
+4. **Identity / zero** — `f(x, x)`, `f(0)`, `f(NaN)`.
+
+If the function has more than one input axis, do all 2×2 (or 2×N) quadrants explicitly, not just the diagonal.
+
+### Property-based tests (`fast-check`)
+
+For any pure domain function with a quantifiable invariant (range, idempotence, round-trip), prefer a `fc.assert(fc.property(...))` over hand-rolled corpora. They catch the "I forgot to test the far quadrant" class of bug automatically. See `tests/domain/*.property.test.ts` for examples.
+
+### Regression tests
+
+Every user-reported bug gets a named test in `tests/regression/<scenario>.test.ts`. The file's docblock names the bug report date and the symptom. See `tests/regression/README.md` for the format.
+
+### Mutation testing
+
+`yarn test:mutation` runs Stryker against `src/domain/`. New domain code should not lower the mutation score noticeably. Run before merging substantial changes to pure logic.
 
 ## Pipeline shape
 
